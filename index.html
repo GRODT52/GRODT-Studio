@@ -78,25 +78,30 @@ footer{position:relative;z-index:2;margin-top:80px;padding:30px 20px;border-top:
   <div class="aura"></div>
   <div class="ttl"><h1 class="glitch" aria-label="GRODT"><span style="--d:0">G</span><span style="--d:1">R</span><span style="--d:2">O</span><span style="--d:3">D</span><span style="--d:4">T</span></h1></div>
   <div class="studio">STUDIO</div>
-  <p>Уютные браузерные головоломки. Играйте без установки.</p>
+  <p>Браузерные головоломки и хардкорные платформеры. Играйте без установки.</p>
   <a class="btn" href="#games">Смотреть игры</a>
-  <div class="tick"><div id="tk">Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>ИГРАЙ В БРАУЗЕРЕ<span>◆</span></div></div>
+  <div class="tick"><div id="tk">NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>ИГРАЙ В БРАУЗЕРЕ<span>◆</span></div></div>
 </section>
 
 <section id="games">
   <h2 class="rv">Наши игры</h2>
   <div class="grid">
-    <a class="card rv" style="--i:0" href="games/lumen-garden/index.html"><span class="ic">✦</span>
+    <a class="card rv" style="--i:0" href="games/neon-run/index.html"><span class="ic">▲</span>
+      <span class="tag">Платформер</span>
+      <h3>Neon Runner</h3>
+      <p>Хардкорный неоновый платформер. 9 уровней, шипы, пилы и кристаллы.</p>
+    </a>
+    <a class="card rv" style="--i:1" href="games/lumen-garden/index.html"><span class="ic">✦</span>
       <span class="tag">Головоломка</span>
       <h3>Lumen Garden</h3>
       <p>Проведите свет к бутонам, вращая плитки. 48 уровней.</p>
     </a>
-    <a class="card rv" style="--i:1" href="games/ball-sort/index.html"><span class="ic">●</span>
+    <a class="card rv" style="--i:2" href="games/ball-sort/index.html"><span class="ic">●</span>
       <span class="tag">Сортировка</span>
       <h3>Ball Sort</h3>
       <p>Рассортируйте шарики по пробиркам. Бесконечные уровни.</p>
     </a>
-    <a class="card rv" style="--i:2" href="games/firefly-garden/index.html"><span class="ic">✧</span>
+    <a class="card rv" style="--i:3" href="games/firefly-garden/index.html"><span class="ic">✧</span>
       <span class="tag">Головоломка</span>
       <h3>Firefly Garden</h3>
       <p>Соединяйте пары огоньков, не пересекая пути.</p>
@@ -141,7 +146,6 @@ rs();addEventListener('resize',rs);
 for(var i=0;i<42;i++)P.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,s:16+Math.random()*34,v:.15+Math.random()*.5,g:G[Math.floor(Math.random()*8)],a:.08+Math.random()*.2,r:Math.random()*6,rv:(Math.random()-.5)*.012,c:Math.random()<.5?'#e2b857':'#a07cff'});
 addEventListener('pointermove',function(e){m.x=e.clientX;m.y=e.clientY;glow.style.transform='translate('+(e.clientX-200)+'px,'+(e.clientY-200)+'px)'});
 addEventListener('pointerdown',function(e){for(var i=0;i<18;i++){var a=Math.random()*6.28,v=1+Math.random()*4;S.push({x:e.clientX,y:e.clientY,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1,c:Math.random()<.5?'#e2b857':'#ff4fa3'})}});
-var still=matchMedia('(prefers-reduced-motion:reduce)').matches;
 function loop(){x.clearRect(0,0,W,H);
   P.forEach(function(p){if(!still){p.y-=p.v;p.r+=p.rv;var dx=p.x-m.x,dy=p.y-m.y,d=Math.hypot(dx,dy);if(d<160){p.x+=dx/d*(160-d)*.04;p.y+=dy/d*(160-d)*.04}if(p.y<-60){p.y=H+60;p.x=Math.random()*W}}
     x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=p.a;x.fillStyle=p.c;x.shadowColor=p.c;x.shadowBlur=14;x.font=p.s+'px serif';x.fillText(p.g,0,0);x.restore()});
