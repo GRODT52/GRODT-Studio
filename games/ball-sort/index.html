@@ -72,7 +72,6 @@ canvas { display:block; }
 const Core = {};
 Core.FONT = 'Nunito, "Segoe UI", "Trebuchet MS", sans-serif';
 
-// 1.1. Добавлены ownedBallSkins и currentBallSkin
 Core.DEFAULT_SAVE = {
   level: 1, totalScore: 0, coins: 100, hintsOwned: 3,
   bestScores: {}, bestStars: {}, ownedSkins: ['classic'], currentSkin: 'classic',
@@ -142,8 +141,8 @@ Core.SDK = {
     });
   },
   interstitial() { if (this.isStub || !this.ysdk) return; try { this.ysdk.adv.showFullscreenAdv({ callbacks: {} }); } catch (e) {} },
-  gameplayStart() { try { this.ysdk?.features?.GameplayAPI?.start?.(); } catch (e) {} },
-  gameplayStop()  { try { this.ysdk?.features?.GameplayAPI?.stop?.(); } catch (e) {} }
+  gameplayStart() { try { if (this.ysdk?.features?.GameplayAPI) this.ysdk.features.GameplayAPI.start(); } catch (e) {} },
+  gameplayStop()  { try { if (this.ysdk?.features?.GameplayAPI) this.ysdk.features.GameplayAPI.stop(); } catch (e) {} }
 };
 
 Core.Achievements = {
@@ -164,9 +163,7 @@ Core.Achievements = {
     Core.SDK.save({ achievements: cur });
     return true;
   },
-  isUnlocked: function (id) {
-    return !!Core.SDK.get('achievements', {})[id];
-  },
+  isUnlocked: function (id) { return !!Core.SDK.get('achievements', {})[id]; },
   count: function () {
     const a = Core.SDK.get('achievements', {});
     return Object.keys(a).length;
@@ -182,7 +179,6 @@ Core.Skins = {
   }
 };
 
-// 1.2. Добавлены скины шаров сразу после Core.Skins
 Core.Skins.balls = {
   classic: { name: 'Классика', price: 0,   style: 'glossy' },
   flat:    { name: 'Плоский',  price: 100, style: 'flat'   },
@@ -319,7 +315,6 @@ Core.makeCoinTexture = function (scene) {
   g.generateTexture('coin_icon', size, size); g.destroy();
 };
 
-// 1.3. Добавлен рендер-хелпер для шаров
 Core.renderBall = function (scene, radius, color, skinKey) {
   const skin = Core.Skins.balls[skinKey] || Core.Skins.balls.classic;
   const c = scene.add.container(0, 0);
@@ -448,9 +443,6 @@ Core.showAchievement = function (scene, achId) {
   scene.tweens.add({ targets: c, y: -120, duration: 500, delay: 2400, ease: 'Back.In', onComplete: function () { c.destroy(); } });
 };
 
-/* ==========================================================
-   BASE GAME SCENE
-   ========================================================== */
 class BaseGameScene extends Phaser.Scene {
   init(data) {
     this.mode = (data && data.mode) || 'level';
@@ -661,9 +653,7 @@ class BaseGameScene extends Phaser.Scene {
     const coins = Core.SDK.get('coins', 0);
     const ownedSkins = Core.SDK.get('ownedSkins', []);
     if (totalLevels >= 1 && Core.Achievements.unlock('first_win')) unlocked.push('first_win');
-    // 3 звезды — начиная со 2-го уровня (на первом это слишком просто)
     if (stars === 3 && totalLevels >= 2 && Core.Achievements.unlock('three_stars')) unlocked.push('three_stars');
-    // Комбо x10 — только на уровнях с 5+ цветами (на лёгких не считаем)
     if (this.maxCombo >= 10 && this.colors >= 5 && Core.Achievements.unlock('combo_10')) unlocked.push('combo_10');
     if (totalLevels >= 10 && Core.Achievements.unlock('ten_levels')) unlocked.push('ten_levels');
     if (totalLevels >= 50 && Core.Achievements.unlock('fifty_levels')) unlocked.push('fifty_levels');
@@ -803,9 +793,6 @@ class BaseGameScene extends Phaser.Scene {
   showHint() {}
 }
 
-/* ==========================================================
-   BOOT
-   ========================================================== */
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
   async create() {
@@ -813,14 +800,17 @@ class BootScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0f3460');
     const loading = this.add.text(W / 2, H / 2, 'Загрузка...', Core.TextStyles.heading(30)).setOrigin(0.5);
     this.tweens.add({ targets: loading, alpha: 0.35, duration: 600, yoyo: true, repeat: -1 });
+    
     try {
       await Promise.race([
         document.fonts.load('900 32px Nunito'),
         document.fonts.load('800 32px Nunito'),
         document.fonts.load('700 32px Nunito'),
+        document.fonts.ready,
         new Promise(function (r) { setTimeout(r, 2500); })
       ]);
     } catch (e) {}
+    
     Core.makeGradients(this);
     await Core.SDK.init();
     loading.destroy();
@@ -828,9 +818,6 @@ class BootScene extends Phaser.Scene {
   }
 }
 
-/* ==========================================================
-   MENU
-   ========================================================== */
 class MenuScene extends Phaser.Scene {
   constructor() { super('Menu'); }
   create() {
@@ -846,6 +833,18 @@ class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: star, alpha: 0.05, duration: 1200 + Math.random() * 2000, yoyo: true, repeat: -1, ease: 'Sine.InOut', delay: Math.random() * 2000 });
     }
 
+    // Кнопка возврата на сайт
+    const portalBtn = this.add.text(20, 45, '← На сайт', {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800',
+      color: '#ffffff', backgroundColor: '#00000099', padding: { x: 12, y: 8 }
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    
+    portalBtn.on('pointerover', () => portalBtn.setColor('#4ecca3'));
+    portalBtn.on('pointerout',  () => portalBtn.setColor('#ffffff'));
+    portalBtn.on('pointerdown', () => {
+      window.location.href = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
+    });
+
     const title = this.add.text(W / 2, H * 0.13, 'PUZZLE FLOW', Core.TextStyles.title(52)).setOrigin(0.5);
     this.tweens.add({ targets: title, scale: 1.04, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.add.text(W / 2, H * 0.19, GameRegistry.title, {
@@ -853,15 +852,12 @@ class MenuScene extends Phaser.Scene {
       color: '#7fd4c1', stroke: '#0f3460', strokeThickness: 2
     }).setOrigin(0.5);
 
-    // Ресурсы слева/по центру
     const totalScore = Core.SDK.get('totalScore', 0);
     const coins = Core.SDK.get('coins', 0);
     this.add.text(W / 2 - 80, H * 0.25, '★ ' + totalScore, Core.TextStyles.gold(20)).setOrigin(0.5);
     Core.coinLabel(this, W / 2 + 80, H * 0.25, coins, { fontSize: 20, iconSize: 22, anchor: 'center' });
 
-    // Кнопка ачивок справа сверху
     this.createAchievementsButton(W - 50, 50);
-    
 
     const level = Core.SDK.get('level', 1);
     this.createBigButton(W / 2, H * 0.37, level, () => {
@@ -889,7 +885,6 @@ class MenuScene extends Phaser.Scene {
     const bg = this.add.circle(0, 0, 34, 0x2a2a4a).setStrokeStyle(2, 0xffd93d, 0.8);
     c.add(bg);
     c.add(this.add.text(0, -2, '🏆', { fontSize: '28px' }).setOrigin(0.5));
-    // Маленький бейдж с счётчиком
     const badge = this.add.circle(24, -24, 14, 0xe74c3c);
     c.add(badge);
     c.add(this.add.text(24, -24, count + '', {
@@ -904,7 +899,6 @@ class MenuScene extends Phaser.Scene {
       this.scene.start('Achievements');
     });
 
-    // Лёгкая пульсация если есть непросмотренные — упрощённо: всегда пульсирует, если есть хоть одна
     if (count > 0) {
       this.tweens.add({
         targets: c, scale: 1.06, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut'
@@ -1014,9 +1008,6 @@ class MenuScene extends Phaser.Scene {
   }
 }
 
-/* ==========================================================
-   ACHIEVEMENTS
-   ========================================================== */
 class AchievementsScene extends Phaser.Scene {
   constructor() { super('Achievements'); }
   create() {
@@ -1037,7 +1028,6 @@ class AchievementsScene extends Phaser.Scene {
     const total = Core.Achievements.list.length;
     this.add.text(W / 2, 92, count + ' / ' + total, Core.TextStyles.gold(22)).setOrigin(0.5);
 
-    // Прогресс-бар
     const barW = W - 120, barH = 12, barY = 118;
     this.add.rectangle(W / 2, barY, barW, barH, 0x1a1a2e).setOrigin(0.5).setStrokeStyle(2, 0x444455);
     if (count > 0) {
@@ -1046,7 +1036,6 @@ class AchievementsScene extends Phaser.Scene {
       this.tweens.add({ targets: fill, scaleX: 1.02, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     }
 
-    // Список — скроллируемый
     const listY = 160;
     const rowH = 95;
     const rowGap = 12;
@@ -1066,7 +1055,6 @@ class AchievementsScene extends Phaser.Scene {
       const rowBg = this.add.rectangle(0, 0, rowW, rowH, bgColor).setOrigin(0.5).setStrokeStyle(2, strokeColor, unlocked ? 1 : 0.5);
       c.add(rowBg);
 
-      // Иконка
       const iconBg = this.add.circle(-rowW / 2 + 60, 0, 36, unlocked ? 0x3a2e10 : 0x252535)
         .setStrokeStyle(2, strokeColor, unlocked ? 0.9 : 0.4);
       c.add(iconBg);
@@ -1076,20 +1064,17 @@ class AchievementsScene extends Phaser.Scene {
       if (!unlocked) icon.setAlpha(0.4);
       c.add(icon);
 
-      // Название
       c.add(this.add.text(-rowW / 2 + 120, -18, ach.name, {
         fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
         color: unlocked ? '#ffd93d' : '#666677'
       }).setOrigin(0, 0.5));
 
-      // Описание
       c.add(this.add.text(-rowW / 2 + 120, 12, ach.desc, {
         fontFamily: Core.FONT, fontSize: '14px', fontStyle: '700',
         color: unlocked ? '#cccccc' : '#555566',
         wordWrap: { width: rowW - 200 }
       }).setOrigin(0, 0.5));
 
-      // Статус справа
       if (unlocked) {
         c.add(this.add.text(rowW / 2 - 30, 0, '✓', {
           fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#4ecca3'
@@ -1100,7 +1085,6 @@ class AchievementsScene extends Phaser.Scene {
         }).setOrigin(0.5));
       }
 
-      // Лёгкое покачивание для разблокированных
       if (unlocked) {
         this.tweens.add({
           targets: icon, scale: 1.1, duration: 1400 + i * 100, yoyo: true, repeat: -1, ease: 'Sine.InOut'
@@ -1110,11 +1094,9 @@ class AchievementsScene extends Phaser.Scene {
       container.add(c);
     });
 
-    // Скролл
     const totalH = list.length * (rowH + rowGap);
     const viewH = H - listY - 60;
     if (totalH > viewH) {
-      // Простая маска
       const maskShape = this.make.graphics({ x: 0, y: listY });
       maskShape.fillRect(0, 0, W, viewH);
       container.setMask(maskShape.createGeometryMask());
@@ -1135,14 +1117,12 @@ class AchievementsScene extends Phaser.Scene {
         container.y = ny;
       });
 
-      // Колёсико
       this.input.on('wheel', (p, objs, dx, dy) => {
         let ny = container.y - dy * 0.5;
         ny = Math.max(minY, Math.min(maxY, ny));
         container.y = ny;
       });
 
-      // Подсказка «листай»
       const hint = this.add.text(W / 2, H - 30, '↑ листай ↓', Core.TextStyles.soft(12, '#555555')).setOrigin(0.5);
       this.tweens.add({ targets: hint, alpha: 0.3, duration: 1200, yoyo: true, repeat: -1 });
     }
@@ -1151,9 +1131,6 @@ class AchievementsScene extends Phaser.Scene {
   }
 }
 
-/* ==========================================================
-   LEVEL MAP
-   ========================================================== */
 class LevelMapScene extends Phaser.Scene {
   constructor() { super('LevelMap'); }
   create() {
@@ -1241,9 +1218,6 @@ class LevelMapScene extends Phaser.Scene {
   }
 }
 
-/* ==========================================================
-   SHOP
-   ========================================================== */
 class ShopScene extends Phaser.Scene {
   constructor() { super('Shop'); }
   create() {
@@ -1262,7 +1236,6 @@ class ShopScene extends Phaser.Scene {
     this.createItemCard(W / 2 - 100, 220, '💡', '+1 подсказка', 30, () => this.buyHint(1, 30));
     this.createItemCard(W / 2 + 100, 220, '💡', '+3 подсказки', 80, () => this.buyHint(3, 80), 'выгодно');
     
-    // 1.6. Замена блока скинов труб на систему вкладок
     const tabY = 345;
     this.tubeTab = this.makeTab(W / 2 - 90, tabY, 'ТРУБЫ', () => this.setSkinTab('tubes'));
     this.ballTab = this.makeTab(W / 2 + 90, tabY, 'ШАРЫ',  () => this.setSkinTab('balls'));
@@ -1274,7 +1247,6 @@ class ShopScene extends Phaser.Scene {
     this.cameras.main.fadeIn(250, 0, 0, 0);
   }
 
-  // 1.6. Новые методы для вкладок и шаров
   makeTab(x, y, text, onClick) {
     const bg = this.add.rectangle(x, y, 160, 48, 0x2a2a4a).setStrokeStyle(2, 0x4ecca3, 0.5);
     const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#888888' }).setOrigin(0.5);
@@ -1424,7 +1396,6 @@ class ShopScene extends Phaser.Scene {
       btnBg.on('pointerout',  () => btnBg.setAlpha(1));
       btnBg.on('pointerdown', clickFn);
     }
-    // Добавлено по требованию: трубы теперь тоже рендерятся в контейнер, чтобы removeAll их корректно чистил
     this.skinContainer.add(c);
   }
   async buyHint(count, price) {
@@ -1463,9 +1434,6 @@ class ShopScene extends Phaser.Scene {
 
 const GameRegistry = { title: 'Ball Sort', sceneKey: 'BallSort' };
 
-/* ==========================================================
-   GAME — Ball Sort
-   ========================================================== */
 const MAX_TUBE = 4;
 
 const Logic = {
@@ -1557,7 +1525,6 @@ function generateLevel(level, seed) {
 class BallSortScene extends BaseGameScene {
   constructor() { super('BallSort'); }
   buildLevel(level) {
-    // 1.4. Запомнить текущий скин шаров
     this.ballSkin = Core.SDK.get('currentBallSkin', 'classic');
     const data = this.isDaily ? generateLevel(0, this.seed) : generateLevel(level);
     this.tubes = data.tubes;
@@ -1646,7 +1613,6 @@ class BallSortScene extends BaseGameScene {
     const ballR = 26, step = ballR * 2 + 2, bottomPad = 12;
     return { x: g.x, y: g.y + g.h / 2 - bottomPad - ballR - idxFromBottom * step };
   }
-  // 1.5. Полная замена метода makeBall
   makeBall(tubeIdx, idx) {
     const pos = this.ballPos(tubeIdx, idx);
     const color = Core.PALETTE[this.tubes[tubeIdx][idx] % Core.PALETTE.length];
@@ -1846,7 +1812,6 @@ try {
   if (window.__showFatal) window.__showFatal('Запуск: ' + (e && e.message));
   console.error(e);
 }
-
 </script>
 </body>
 </html>
