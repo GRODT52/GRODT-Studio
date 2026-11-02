@@ -2,1377 +2,1816 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Lumen Garden v0.2.1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
+<title>Puzzle Flow — Ball Sort</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#070a12;overflow:hidden;touch-action:manipulation;}
-  canvas{display:block;}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#0f3460;
+  font-family: 'Nunito', 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+  touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+#game { width:100%; height:100%; }
+canvas { display:block; }
+#err-overlay { position:fixed; left:0; right:0; bottom:0; max-height:45vh; overflow:auto;
+  background:#b00020; color:#fff; font:13px/1.5 monospace; padding:12px 16px;
+  z-index:99999; white-space:pre-wrap; display:none; border-top:2px solid #ffb3c1; }
+#err-overlay h3 { margin:0 0 6px; font-size:15px; }
+#err-overlay .close { position:absolute; top:6px; right:10px; cursor:pointer; color:#ffdde4; font-size:18px; }
 </style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap"
+  onerror="this.onerror=null;this.href='https://fonts.bunny.net/css?family=nunito:700,800,900'">
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<div id="game"></div>
+<div id="err-overlay">
+  <span class="close" onclick="this.parentNode.style.display='none'">✕</span>
+  <h3>Ошибка</h3>
+  <div id="err-body"></div>
+</div>
+
 <script>
-/* ============================================================
-   LUMEN GARDEN — v0.2.1
-   - Full board: all cells filled with tiles (real + decoy)
-   - Multi-language (RU / EN) with menu selector
-   - Hard move limit + S/A/B/C ranks
-   - Portal exit buttons (menu + in-game)
-   ============================================================ */
+(function () {
+  var o = document.getElementById('err-overlay'), b = document.getElementById('err-body');
+  function show(m) { o.style.display='block'; b.textContent += (b.textContent?'\n':'') + m; }
+  window.addEventListener('error', function (e) { show('ERROR: ' + (e.message||e) + ' @ ' + (e.filename||'') + ':' + (e.lineno||'')); });
+  window.addEventListener('unhandledrejection', function (e) { show('PROMISE: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+  window.__showFatal = show;
+})();
+</script>
 
-const VERSION = '0.2.1';
-const W = 720, H = 1280;
-const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
-const SAVE_KEY = 'svetosad_save_v1';
-const LEVELS_TOTAL = 48;
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+<script>
+  if (typeof Phaser === 'undefined') document.write('<script src="https://unpkg.com/phaser@3.80.1/dist/phaser.min.js"><\/script>');
+</script>
+<script>
+  if (typeof Phaser === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"><\/script>');
+</script>
 
-/* ─── Настройки портала  ─── */
-const PORTAL_URL = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
-const GAMES_URL  = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
+<script>
+  (function () {
+    var isLocal = (location.protocol === 'file:' || location.hostname === 'localhost' ||
+      location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0' || location.hostname === '');
+    window.__isLocal = isLocal;
+    if (!isLocal) document.write('<script src="https://yandex.ru/games/sdk/v2"><\/script>');
+  })();
+</script>
 
-/* Универсальный выход: сначала postMessage родителю (для iframe),
-   потом редирект. Если URL не задан — history.back(). */
-function exitToPortal(url){
-  try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'lumen-garden:exit', url }, '*');
-    }
-  } catch(e){}
-  try {
-    if (url && /^https?:\/\//.test(url)) {
-      window.location.href = url;
-    } else {
-      window.history.back();
-    }
-  } catch(e){}
-}
+<script>
+  if (typeof Phaser === 'undefined') {
+    document.body.innerHTML = '<div style="color:#fff;padding:24px;font:15px/1.7 sans-serif;max-width:600px;margin:40px auto"><h2 style="color:#ffb3c1">Phaser не загрузился</h2><p>Все CDN упали. Проверь интернет/блокировщики.</p></div>';
+    throw new Error('Phaser not loaded');
+  }
+</script>
 
-const DIRS = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
-const bit  = d => 1 << d;
-const opp  = d => (d + 2) % 4;
+<script>
+'use strict';
 
-function rotMask(mask, r){
-  let o = 0;
-  for (let i=0;i<4;i++) if (mask & (1<<i)) o |= 1 << ((i + r) % 4);
-  return o;
-}
-function popcount(m){ let c=0; while(m){ c += m & 1; m >>= 1; } return c; }
+const Core = {};
+Core.FONT = 'Nunito, "Segoe UI", "Trebuchet MS", sans-serif';
 
-function mulberry32(a){
-  return function(){
+Core.DEFAULT_SAVE = {
+  level: 1, totalScore: 0, coins: 100, hintsOwned: 3,
+  bestScores: {}, bestStars: {}, ownedSkins: ['classic'], currentSkin: 'classic',
+  lastDailyBonus: 0, totalLevelsCompleted: 0,
+  achievements: {}, dailyDate: 0, dailyStars: 0,
+  ownedBallSkins: ['classic'], currentBallSkin: 'classic'
+};
+
+function mulberry32(a) {
+  return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
     let t = Math.imul(a ^ a >>> 15, 1 | a);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
-
-/* ============================================================
-   ЛОКАЛИЗАЦИЯ
-   ============================================================ */
-const LANGS = {
-  ru: {
-    subtitle:     'зажги все бутоны · не потрать лишний ход',
-    play:         'Играть',
-    continue:     'Продолжить',
-    levels:       'УРОВНИ',
-    level:        'Уровень',
-    moves:        'Ходы',
-    movesLower:   'ходов',
-    min:          'мин',
-    minimum:      'минимум',
-    buds:         'Бутоны',
-    restart:      'Заново',
-    hint:         'Подсказка',
-    levelComplete:'Уровень пройден!',
-    best:         'лучший',
-    next:         'Далее',
-    toMenu:       'В меню',
-    toLevels:     'К уровням',
-    rankS:        'ИДЕАЛЬНО',
-    rankA:        'ОТЛИЧНО',
-    rankB:        'ХОРОШО',
-    rankC:        'ПРОЙДЕНО',
-    withered:     'Сад увял',
-    outOfMoves:   'Закончились ходы',
-    adReward:     '+5 ходов (реклама)',
-    backSite:     '← Сайт',
-  },
-  en: {
-    subtitle:     'light every bud · waste no move',
-    play:         'Play',
-    continue:     'Continue',
-    levels:       'LEVELS',
-    level:        'Level',
-    moves:        'Moves',
-    movesLower:   'moves',
-    min:          'min',
-    minimum:      'minimum',
-    buds:         'Buds',
-    restart:      'Restart',
-    hint:         'Hint',
-    levelComplete:'Level complete!',
-    best:         'best',
-    next:         'Next',
-    toMenu:       'Menu',
-    toLevels:     'Levels',
-    rankS:        'PERFECT',
-    rankA:        'GREAT',
-    rankB:        'GOOD',
-    rankC:        'CLEARED',
-    withered:     'The garden withered',
-    outOfMoves:   'Out of moves',
-    adReward:     '+5 moves (ad)',
-    backSite:     '← Site',
-  }
-};
-
-let CURRENT_LANG = 'en';
-function L(key){
-  const d = LANGS[CURRENT_LANG] || LANGS.en;
-  return (d[key] != null ? d[key] : (LANGS.en[key] != null ? LANGS.en[key] : key));
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
-/* ============================================================
-   ЗВУК
-   ============================================================ */
-const Sound = {
-  ctx: null,
-  on: true,
-
-  init(){
-    if (!this.ctx){
+Core.SDK = {
+  ysdk: null, player: null, isStub: true, saveData: {},
+  async init() {
+    if (typeof YaGames === 'undefined') { console.log('[SDK] stub'); this.loadStub(); return; }
+    try {
+      this.ysdk = await Promise.race([
+        YaGames.init(),
+        new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, 3000); })
+      ]);
+      this.isStub = false;
+      try { this.player = await this.ysdk.getPlayer({ scopes: false }); } catch (e) {}
+      if (this.player) {
+        try { this.saveData = (await this.player.getData()) || {}; } catch (e) { this.saveData = {}; }
+      }
+    } catch (e) { console.warn('[SDK] stub:', e.message); this.isStub = true; this.loadStub(); }
+    this.migrate();
+  },
+  loadStub() {
+    try { this.saveData = JSON.parse(localStorage.getItem('_game_save') || '{}'); }
+    catch (e) { this.saveData = {}; }
+  },
+  migrate() {
+    const d = Core.DEFAULT_SAVE;
+    for (const k in d) if (this.saveData[k] === undefined) this.saveData[k] = JSON.parse(JSON.stringify(d[k]));
+  },
+  async save(patch) {
+    Object.assign(this.saveData, patch);
+    if (this.isStub || !this.player) { try { localStorage.setItem('_game_save', JSON.stringify(this.saveData)); } catch (e) {} return; }
+    try { await this.player.setData(this.saveData, true); } catch (e) {}
+  },
+  get(key, def) {
+    if (this.saveData[key] === undefined) return def !== undefined ? def : Core.DEFAULT_SAVE[key];
+    return this.saveData[key];
+  },
+  async rewarded() {
+    if (this.isStub || !this.ysdk) { await new Promise(function (r) { setTimeout(r, 600); }); return true; }
+    return new Promise((resolve) => {
+      let ok = false;
       try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (AC) this.ctx = new AC();
-      } catch(e){ this.ctx = null; }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        this.ysdk.adv.showRewardedVideo({ callbacks: {
+          onRewarded: function () { ok = true; },
+          onClose: function () { resolve(ok); },
+          onError: function () { resolve(false); }
+        }});
+      } catch (e) { resolve(false); }
+    });
   },
-
-  tone(freq, dur, o){
-    if (!this.on || !this.ctx) return;
-    o = o || {};
-    const t0  = this.ctx.currentTime + (o.delay || 0);
-    const osc = this.ctx.createOscillator();
-    const g   = this.ctx.createGain();
-    osc.type = o.type || 'sine';
-    osc.frequency.setValueAtTime(freq, t0);
-    if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.to), t0 + dur);
-    const vol = (o.vol == null ? 0.12 : o.vol);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.014);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(g); g.connect(this.ctx.destination);
-    osc.start(t0); osc.stop(t0 + dur + 0.04);
-  },
-
-  tap(){    this.tone(430, 0.09, {type:'triangle', vol:0.09, to:700}); },
-  locked(){ this.tone(150, 0.13, {type:'sawtooth', vol:0.045, to:90}); },
-  warn(){   this.tone(880, 0.10, {type:'sine', vol:0.09, to:660}); },
-  hint(){   this.tone(880, 0.12, {type:'sine', vol:0.07});
-            this.tone(1320, 0.18, {type:'sine', vol:0.06, delay:0.09}); },
-  lit(){    [660, 880, 1108].forEach((f,i)=>
-              this.tone(f, 0.22, {type:'sine', vol:0.08, delay:i*0.07})); },
-  win(){    [523, 659, 784, 1046, 1318].forEach((f,i)=>
-              this.tone(f, 0.38, {type:'triangle', vol:0.085, delay:i*0.1})); },
-  fail(){   [440, 330, 260, 200].forEach((f,i)=>
-              this.tone(f, 0.35, {type:'triangle', vol:0.09, delay:i*0.12})); },
-  ui(){     this.tone(620, 0.06, {type:'sine', vol:0.06, to:820}); }
+  interstitial() { if (this.isStub || !this.ysdk) return; try { this.ysdk.adv.showFullscreenAdv({ callbacks: {} }); } catch (e) {} },
+  gameplayStart() { try { if (this.ysdk?.features?.GameplayAPI) this.ysdk.features.GameplayAPI.start(); } catch (e) {} },
+  gameplayStop()  { try { if (this.ysdk?.features?.GameplayAPI) this.ysdk.features.GameplayAPI.stop(); } catch (e) {} }
 };
 
-/* ============================================================
-   СОХРАНЕНИЕ
-   ============================================================ */
-function loadSave(){
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(e){}
-  if (!s || typeof s !== 'object') s = {};
-  if (!s.max)   s.max = 1;
-  if (!s.stars) s.stars = {};
-  if (!s.best)  s.best  = {};
-  if (!s.ranks) s.ranks = {};
-  if (s.sound === undefined) s.sound = true;
-  if (!s.lang)  s.lang = 'en';
-  return s;
-}
-function writeSave(s){
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch(e){}
-}
-function saveWin(level, stars, moves, rank){
-  const s = loadSave();
-  s.stars[level] = Math.max(s.stars[level] || 0, stars);
-  if (moves != null && (!s.best[level] || moves < s.best[level])) s.best[level] = moves;
-  const order = { S:4, A:3, B:2, C:1 };
-  if (rank && (!s.ranks[level] || (order[rank] || 0) > (order[s.ranks[level]] || 0)))
-    s.ranks[level] = rank;
-  if (level >= s.max) s.max = level + 1;
-  writeSave(s);
-}
+Core.Achievements = {
+  list: [
+    { id: 'first_win',    icon: '🏆', name: 'Первая победа',   desc: 'Пройди первый уровень' },
+    { id: 'three_stars',  icon: '⭐', name: 'Идеально',         desc: 'Получи 3 звезды на уровне' },
+    { id: 'combo_10',     icon: '🔥', name: 'Серия x10',        desc: 'Доведи комбо до 10' },
+    { id: 'ten_levels',   icon: '🎯', name: 'Десятка',          desc: 'Пройди 10 уровней' },
+    { id: 'fifty_levels', icon: '💎', name: 'Полсотни',         desc: 'Пройди 50 уровней' },
+    { id: 'daily_done',   icon: '🎁', name: 'Ежедневный',       desc: 'Пройди ежедневный вызов' },
+    { id: 'rich',         icon: '💰', name: 'Богач',            desc: 'Накопи 1000 монет' },
+    { id: 'all_skins',    icon: '🎨', name: 'Коллекционер',     desc: 'Собери все скины' }
+  ],
+  unlock: function (id) {
+    const cur = Core.SDK.get('achievements', {});
+    if (cur[id]) return false;
+    cur[id] = Date.now();
+    Core.SDK.save({ achievements: cur });
+    return true;
+  },
+  isUnlocked: function (id) { return !!Core.SDK.get('achievements', {})[id]; },
+  count: function () {
+    const a = Core.SDK.get('achievements', {});
+    return Object.keys(a).length;
+  }
+};
 
-/* ============================================================
-   ГЕНЕРАТОР УРОВНЕЙ
-   ============================================================ */
-function buildCandidate(size, bulbCount, targetLen, rng){
-  const key = (x,y)=>x+','+y;
-  const inB = (x,y)=> x>=0 && y>=0 && x<size && y<size;
-  const cells = new Map();
+Core.Skins = {
+  tubes: {
+    classic: { name: 'Классика', price: 0,   stroke: 0xffffff, fill: 0xffffff, strokeAlpha: 0.4,  fillAlpha: 0.04, lineWidth: 3, activeStroke: 0x4ecca3, activeFill: 0x4ecca3, activeFillAlpha: 0.15 },
+    glass:   { name: 'Стекло',   price: 150, stroke: 0xa0e8ff, fill: 0xa0e8ff, strokeAlpha: 0.75, fillAlpha: 0.12, lineWidth: 3, activeStroke: 0x4ecca3, activeFill: 0x4ecca3, activeFillAlpha: 0.2 },
+    metal:   { name: 'Металл',   price: 200, stroke: 0xc8d0d8, fill: 0x8899a8, strokeAlpha: 0.95, fillAlpha: 0.22, lineWidth: 4, activeStroke: 0x7fd4c1, activeFill: 0x7fd4c1, activeFillAlpha: 0.25 },
+    wood:    { name: 'Дерево',   price: 250, stroke: 0xc69050, fill: 0x7a4a20, strokeAlpha: 1,    fillAlpha: 0.4,  lineWidth: 5, activeStroke: 0xffb84d, activeFill: 0xffb84d, activeFillAlpha: 0.3 }
+  }
+};
 
-  const edge = [];
-  for (let y=0;y<size;y++) for (let x=0;x<size;x++)
-    if (x===0||y===0||x===size-1||y===size-1) edge.push({x,y});
-  const s = edge[Math.floor(rng()*edge.length)];
-  const vd = [];
-  for (let d=0; d<4; d++) if (inB(s.x+DIRS[d].dx, s.y+DIRS[d].dy)) vd.push(d);
-  if (!vd.length) return null;
-  const sdir = vd[Math.floor(rng()*vd.length)];
+Core.Skins.balls = {
+  classic: { name: 'Классика', price: 0,   style: 'glossy' },
+  flat:    { name: 'Плоский',  price: 100, style: 'flat'   },
+  neon:    { name: 'Неон',     price: 150, style: 'neon'   },
+  metal:   { name: 'Металл',   price: 200, style: 'metal'  }
+};
 
-  cells.set(key(s.x,s.y), {x:s.x, y:s.y, conns: bit(sdir)});
-
-  const walk = (sx, sy, sdir0, maxLen) => {
-    let cx=sx, cy=sy, dir=sdir0, len=0;
-    const path = [];
-    while (len < maxLen){
-      const opts = [];
-      for (let d=0; d<4; d++){
-        if (len>0 && d===opp(dir)) continue;
-        const nx=cx+DIRS[d].dx, ny=cy+DIRS[d].dy;
-        if (!inB(nx,ny) || cells.has(key(nx,ny))) continue;
-        opts.push(d);
-      }
-      let cand = opts;
-      if (len===0) cand = opts.filter(d=>d===sdir0);
-      if (!cand.length) break;
-
-      let nd;
-      if (cand.includes(dir) && rng() < 0.62) nd = dir;
-      else nd = cand[Math.floor(rng()*cand.length)];
-
-      const nx=cx+DIRS[nd].dx, ny=cy+DIRS[nd].dy;
-      cells.get(key(cx,cy)).conns |= bit(nd);
-      cells.set(key(nx,ny), {x:nx, y:ny, conns: bit(opp(nd))});
-      path.push({x:cx, y:cy});
-      cx=nx; cy=ny; dir=nd; len++;
+Core.Audio = (function () {
+  let ctx = null;
+  function ensure() {
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+  }
+  function tone(freq, dur, type, vol) {
+    ensure(); if (!ctx) return;
+    const t = ctx.currentTime, osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type || 'sine'; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol || 0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(gain).connect(ctx.destination); osc.start(t); osc.stop(t + dur);
+  }
+  return {
+    unlock: ensure,
+    select: function () { tone(660, 0.06, 'triangle', 0.1); },
+    pour:   function () { tone(380 + Math.random() * 80, 0.1, 'sine', 0.1); },
+    drop:   function () { tone(520 + Math.random() * 60, 0.05, 'sine', 0.08); },
+    error:  function () { tone(140, 0.15, 'sawtooth', 0.08); },
+    coin:   function () { tone(1200, 0.05, 'triangle', 0.1); setTimeout(function () { tone(1600, 0.08, 'triangle', 0.09); }, 60); },
+    buy:    function () { tone(523, 0.1, 'triangle', 0.13); setTimeout(function () { tone(784, 0.15, 'triangle', 0.13); }, 90); setTimeout(function () { tone(1047, 0.2, 'triangle', 0.11); }, 200); },
+    combo:  function (n) { const b = 660 + Math.min(n, 6) * 60; tone(b, 0.09, 'triangle', 0.11); setTimeout(function () { tone(b + 200, 0.12, 'triangle', 0.1); }, 90); },
+    bigCombo: function () { tone(880, 0.12, 'triangle', 0.15); setTimeout(function () { tone(1174, 0.12, 'triangle', 0.15); }, 100); setTimeout(function () { tone(1568, 0.2, 'triangle', 0.13); }, 200); setTimeout(function () { tone(2093, 0.3, 'triangle', 0.12); }, 320); },
+    score:  function () { tone(880, 0.05, 'triangle', 0.06); },
+    tubeComplete: function () {
+      tone(784, 0.12, 'triangle', 0.14);
+      setTimeout(function () { tone(988, 0.12, 'triangle', 0.14); }, 100);
+      setTimeout(function () { tone(1318, 0.22, 'triangle', 0.12); }, 200);
+    },
+    record: function () {
+      tone(880, 0.1, 'triangle', 0.14);
+      setTimeout(function () { tone(1109, 0.1, 'triangle', 0.14); }, 100);
+      setTimeout(function () { tone(1318, 0.1, 'triangle', 0.14); }, 200);
+      setTimeout(function () { tone(1760, 0.3, 'triangle', 0.13); }, 300);
+    },
+    achievement: function () {
+      tone(659, 0.1, 'triangle', 0.14);
+      setTimeout(function () { tone(880, 0.1, 'triangle', 0.14); }, 100);
+      setTimeout(function () { tone(1175, 0.2, 'triangle', 0.13); }, 200);
+    },
+    win: function () {
+      tone(523, 0.15, 'triangle', 0.13);
+      setTimeout(function () { tone(659, 0.15, 'triangle', 0.13); }, 120);
+      setTimeout(function () { tone(784, 0.2, 'triangle', 0.13); }, 240);
+      setTimeout(function () { tone(1047, 0.4, 'triangle', 0.11); }, 380);
     }
-    path.push({x:cx, y:cy});
-    return { path, end:{x:cx,y:cy}, len };
   };
+})();
 
-  const main = walk(s.x, s.y, sdir, targetLen);
-  if (main.len < 3) return null;
-
-  const bulbs = [main.end];
-  let total = main.len;
-  let cands = main.path.slice(1, -1);
-
-  let guard = 0;
-  while (bulbs.length < bulbCount && cands.length && guard++ < 120){
-    const c = cands.splice(Math.floor(rng()*cands.length), 1)[0];
-    const t = cells.get(key(c.x,c.y));
-    if (!t) continue;
-    const free = [];
-    for (let d=0; d<4; d++){
-      if (t.conns & bit(d)) continue;
-      const nx=c.x+DIRS[d].dx, ny=c.y+DIRS[d].dy;
-      if (inB(nx,ny) && !cells.has(key(nx,ny))) free.push(d);
+Core.Utils = {
+  shuffleWith: function (a, rng) {
+    const rand = rng || Math.random;
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      const t = a[i]; a[i] = a[j]; a[j] = t;
     }
-    if (!free.length) continue;
-    const d0 = free[Math.floor(rng()*free.length)];
-    const br = walk(c.x, c.y, d0, Math.max(2, Math.round(targetLen*0.6)));
-    if (br.len < 1) continue;
-    bulbs.push(br.end);
-    total += br.len;
-    cands = cands.concat(br.path.slice(1,-1));
-  }
-
-  if (bulbs.length < bulbCount) return null;
-  for (const b of bulbs){
-    const cell = cells.get(key(b.x,b.y));
-    if (!cell || popcount(cell.conns) !== 1) return null;
-  }
-
-  return { cells, source:s, bulbs, size, total };
-}
-
-function makeFallbackLevel(size){
-  const cells = new Map(), y = 1, key=(x,y)=>x+','+y;
-  for (let x=0; x<size; x++){
-    let conns = 0;
-    if (x>0) conns |= bit(3);
-    if (x<size-1) conns |= bit(1);
-    cells.set(key(x,y), {x, y, conns});
-  }
-  return { cells, source:{x:0,y}, bulbs:[{x:size-1,y}], size, total:size };
-}
-
-function fillBoardWithDecoys(levelData, rng){
-  const size = levelData.size;
-  const occupied = new Set();
-  for (const t of levelData.tiles) occupied.add(t.x+','+t.y);
-
-  const types = ['straight','corner','tee','straight','corner'];
-
-  for (let y = 0; y < size; y++){
-    for (let x = 0; x < size; x++){
-      if (occupied.has(x+','+y)) continue;
-      const type = types[Math.floor(rng()*types.length)];
-      const canonical = type === 'straight' ? 5
-                      : type === 'corner'   ? 3 : 7;
-      const rot = Math.floor(rng()*4);
-      levelData.tiles.push({
-        x, y,
-        mask: canonical, type, canonical,
-        rotatable: true,
-        correctRots: [0,1,2,3],
-        rot,
-        _vis: rot*90,
-        _lit: null, _litAny: null,
-        _decoy: true
-      });
-    }
-  }
-}
-
-function generateLevel(levelNum){
-  const rng = mulberry32(levelNum*7919 + 104729);
-
-  const size = levelNum <= 3  ? 4
-             : levelNum <= 10 ? 5
-             : levelNum <= 22 ? 6
-             : levelNum <= 36 ? 7
-             : 8;
-  const bulbCount = levelNum <= 5  ? 1
-                  : levelNum <= 18 ? 2
-                  : 3;
-  const targetLen = Math.max(5, Math.min(
-    Math.floor(size*size*0.55),
-    4 + Math.floor(levelNum*0.85)
-  ));
-
-  let best = null;
-  const tries = levelNum > 30 ? 150 : 80;
-  for (let a=0; a<tries; a++){
-    const res = buildCandidate(size, bulbCount, targetLen, rng);
-    if (res && (!best || res.total > best.total)) best = res;
-    if (best && best.total >= targetLen) break;
-  }
-  if (!best) best = buildCandidate(size, 1, 4, rng) || makeFallbackLevel(size);
-
-  const key = (x,y)=>x+','+y;
-  const bulbSet = new Set(best.bulbs.map(b=>key(b.x,b.y)));
-  const tiles = [];
-
-  for (const [k, c] of best.cells){
-    const isSrc = (c.x===best.source.x && c.y===best.source.y);
-    let type, canonical, rotatable = true;
-
-    if (isSrc){ type='source'; canonical=c.conns; rotatable=false; }
-    else if (bulbSet.has(k)){ type='bulb'; canonical=c.conns; rotatable=false; }
-    else {
-      const n = popcount(c.conns);
-      if (n===2){
-        type = (c.conns===5 || c.conns===10) ? 'straight' : 'corner';
-        canonical = type==='straight' ? 5 : 3;
-      } else if (n===3){ type='tee'; canonical=7; }
-      else if (n===4){ type='cross'; canonical=15; rotatable=false; }
-      else { type='straight'; canonical=5; }
-    }
-
-    const correctRots = [0,1,2,3].filter(r => rotMask(canonical, r) === c.conns);
-    tiles.push({
-      x:c.x, y:c.y, mask:c.conns, type, canonical,
-      rotatable, correctRots, rot:0, _vis:0, _lit:null, _litAny:null
-    });
-  }
-
-  const scrambleChance = levelNum <= 5 ? 0.7 : 1.0;
-  let par = 0;
-  for (const t of tiles){
-    if (!t.rotatable) continue;
-    const wrong = [0,1,2,3].filter(r => !t.correctRots.includes(r));
-    if (wrong.length && rng() < scrambleChance){
-      t.rot = wrong[Math.floor(rng()*wrong.length)];
-    } else {
-      t.rot = t.correctRots[0];
-    }
-    let taps = 9;
-    for (const cr of t.correctRots) taps = Math.min(taps, (cr - t.rot + 4) % 4);
-    par += taps;
-    t._vis = t.rot * 90;
-  }
-  if (par === 0){
-    const t = tiles.find(t => t.rotatable && t.correctRots.length < 4);
-    if (t){ t.rot = (t.rot + 1) % 4; t._vis = t.rot*90; par = 1; }
-  }
-
-  fillBoardWithDecoys({ size: best.size, tiles }, rng);
-
-  const moveLimit = par + Math.max(3, Math.ceil(par * 0.3));
-
-  return { size: best.size, tiles, par, bulbCount, moveLimit };
-}
-
-/* ============================================================
-   РИСОВАНИЕ
-   ============================================================ */
-function drawPipeShape(g, mask, r, width, color, alpha){
-  g.lineStyle(width, color, alpha);
-  g.fillStyle(color, alpha);
-  for (let d=0; d<4; d++){
-    if (!(mask & bit(d))) continue;
-    const dx = DIRS[d].dx, dy = DIRS[d].dy;
-    g.beginPath(); g.moveTo(0,0); g.lineTo(dx*r, dy*r); g.strokePath();
-    g.fillCircle(dx*r, dy*r, width/2);
-  }
-  g.fillCircle(0, 0, width/2);
-}
-
-function drawBulbGfx(g, cell, lit){
-  g.clear();
-  const r = cell*0.15;
-  if (lit){
-    g.fillStyle(0xffb545, 0.09); g.fillCircle(0,0,r*3.0);
-    g.fillStyle(0xffd97a, 0.16); g.fillCircle(0,0,r*2.0);
-    g.fillStyle(0xfff0bb, 0.34); g.fillCircle(0,0,r*1.35);
-    g.fillStyle(0xfffdf0, 1);    g.fillCircle(0,0,r*0.80);
-  } else {
-    g.fillStyle(0x0f1828, 1);    g.fillCircle(0,0,r*1.15);
-    g.lineStyle(Math.max(2, cell*0.028), 0x3a5480, 1);
-    g.strokeCircle(0,0,r*1.15);
-    g.fillStyle(0x2a3d63, 1);    g.fillCircle(0,0,r*0.45);
-  }
-}
-
-function drawSourceGfx(g, cell){
-  g.clear();
-  const r = cell*0.13;
-  g.fillStyle(0xffb545, 0.09); g.fillCircle(0,0,r*3.2);
-  g.fillStyle(0xffd97a, 0.18); g.fillCircle(0,0,r*2.1);
-  g.fillStyle(0xfff3c4, 1);    g.fillCircle(0,0,r*1.10);
-  g.fillStyle(0xffffff, 1);    g.fillCircle(0,0,r*0.60);
-}
-
-function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
-  const c = scene.add.container(x, y);
-  const g = scene.add.graphics();
-  g.fillStyle(color, 1);
-  g.fillRoundedRect(-w/2, -h/2, w, h, h/2);
-  g.lineStyle(2, 0x3b5a92, 0.55);
-  g.strokeRoundedRect(-w/2, -h/2, w, h, h/2);
-  const t = scene.add.text(0, 0, label, {
-    fontFamily: FONT, fontSize: (fontSize||28)+'px', color:'#dbe7ff', fontStyle:'bold'
-  }).setOrigin(0.5);
-  c.add([g, t]);
-  c.labelText = t;
-  c.setSize(w, h);
-  c.setInteractive({ useHandCursor:true });
-  c.on('pointerdown', () => {
-    Sound.init(); Sound.ui();
-    scene.tweens.add({ targets:c, scale:0.94, duration:70, yoyo:true });
-    onClick();
-  });
-  return c;
-}
-/* Круглая кнопка с толстой стрелкой влево.
-   Параметры: scene, x, y, radius, onClick, opts (опционально цвета). */
-function makeArrowButton(scene, x, y, radius, onClick, opts){
-  opts = opts || {};
-  const c = scene.add.container(x, y);
-  const g = scene.add.graphics();
-
-  // Круг
-  g.fillStyle(opts.bg || 0x1d2c4d, 1);
-  g.fillCircle(0, 0, radius);
-  g.lineStyle(2, 0x3b5a92, 0.55);
-  g.strokeCircle(0, 0, radius);
-
-  // Толстая стрелка влево
-  const tipX   = -radius * 0.50;
-  const baseX  =  0;
-  const headH  =  radius * 0.35;
-  const shaftX =  radius * 0.50;
-  const shaftH =  radius * 0.15;
-
-  g.fillStyle(opts.fg || 0xdbe7ff, 1);
-  g.fillTriangle(tipX, 0, baseX, -headH, baseX, headH);          // наконечник
-  g.fillRect(baseX, -shaftH, shaftX - baseX, shaftH * 2);        // древко
-
-    c.add(g);
-  c.setSize(radius * 2, radius * 2);
-  c.setInteractive({ useHandCursor: true });
-  c.on('pointerdown', () => {
-    Sound.init(); Sound.ui();
-    scene.tweens.add({ targets: c, scale: 0.9, duration: 70, yoyo: true });
-    onClick();
-  });
-  return c;
-}
-/* ============================================================
-   РЕКЛАМА
-   ============================================================ */
-const Ads = {
-  played: 0,
-  interstitial(){
-    Ads.played++;
-    if (Ads.played % 4 !== 0) return;
-    // if (window.ysdk) window.ysdk.adv.showFullscreenAdv({});
-  },
-  rewarded(cb){
-    // if (window.ysdk) window.ysdk.adv.showRewardedVideo({ callbacks:{ onRewarded: cb } });
-    cb();
+    return a;
   }
 };
 
-/* ============================================================
-   МЕНЮ
-   ============================================================ */
-class MenuScene extends Phaser.Scene {
-  constructor(){ super('menu'); }
+Core.PALETTE = [
+  0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6,
+  0xe67e22, 0x1abc9c, 0xec407a, 0x795548, 0x607d8b
+];
 
-  create(){
-    const save = loadSave();
-    Sound.on = save.sound;
-    CURRENT_LANG = save.lang || 'en';
-
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x0b1122, 0x0b1122, 0x151f3c, 0x151f3c, 1);
-    g.fillRect(0, 0, W, H);
-    const rnd = mulberry32(99);
-    for (let i=0; i<90; i++){
-      g.fillStyle(0xaac4ff, 0.05 + rnd()*0.18);
-      g.fillCircle(rnd()*W, rnd()*H, 1 + rnd()*1.8);
-    }
-    for (let i=10; i>0; i--){
-      g.fillStyle(0x2a4a8a, 0.010);
-      g.fillCircle(W/2, 300, 90 + i*40);
-    }
-
-    for (let i=0; i<28; i++){
-      const sx = rnd()*W, sy = rnd()*H, sr = 1 + rnd()*1.6;
-      const st = this.add.circle(sx, sy, sr, 0xcfe0ff, 0.15 + rnd()*0.5)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      this.tweens.add({
-        targets: st, alpha: { from: st.alpha*0.15, to: st.alpha },
-        duration: 1100 + rnd()*2400, yoyo: true, repeat: -1, delay: rnd()*1600,
-        ease: 'Sine.easeInOut'
+Core.Juice = {
+  vibrate: function (p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} },
+  burst: function (scene, x, y, color, count, speed) {
+    count = count || 14; speed = speed || 140;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (60 + Math.random() * speed);
+      const r = 3 + Math.random() * 4;
+      const p = scene.add.circle(x, y, r, color, 1).setDepth(950);
+      scene.tweens.add({
+        targets: p, x: x + Math.cos(a) * sp, y: y + Math.sin(a) * sp,
+        alpha: 0, scale: 0.2, duration: 380 + Math.random() * 320, ease: 'Cubic.Out',
+        onComplete: function () { p.destroy(); }
       });
     }
-
-    /* --- Заголовок --- */
-    const title = this.add.text(W/2, 130, 'LUMEN GARDEN', {
-      fontFamily: FONT, fontSize: '56px', color: '#eaf2ff', fontStyle: 'bold',
-      letterSpacing: 2
-    }).setOrigin(0.5);
-    this.tweens.add({
-      targets: title, scale: { from: 1, to: 1.025 },
-      duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-    });
-
-    this.add.text(W/2, 200, L('subtitle'), {
-      fontFamily: FONT, fontSize: '22px', color: '#7d97c4'
-    }).setOrigin(0.5);
-
-    /* --- Версия --- */
-    this.add.text(W-24, H-24, 'v' + VERSION, {
-      fontFamily: FONT, fontSize: '18px', color: '#3a5480'
-    }).setOrigin(1, 1);
-
-  /* --- Кнопка выхода на портал: круглая стрелка --- */
-makeArrowButton(this, 80, 96, 26, () => exitToPortal(PORTAL_URL));
-
-    /* --- Языковой переключатель (сдвинут правее) --- */
-    const langStyleActive   = { fontFamily: FONT, fontSize: '26px', color: '#8fb4ee', fontStyle: 'bold' };
-    const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
-
-  const langBtnRU = this.add.text(W - 64, 150, 'RU', langStyleInactive)
-  .setOrigin(0.5).setInteractive({ useHandCursor:true });
-const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
-  .setOrigin(0.5).setInteractive({ useHandCursor:true });
-
-    langBtnRU.setColor(CURRENT_LANG === 'ru' ? '#8fb4ee' : '#3a4a68');
-    langBtnEN.setColor(CURRENT_LANG === 'en' ? '#8fb4ee' : '#3a4a68');
-
-    langBtnRU.on('pointerdown', () => {
-      if (CURRENT_LANG === 'ru') return;
-      Sound.init(); Sound.ui();
-      CURRENT_LANG = 'ru';
-      const s = loadSave(); s.lang = 'ru'; writeSave(s);
-      this.scene.restart();
-    });
-    langBtnEN.on('pointerdown', () => {
-      if (CURRENT_LANG === 'en') return;
-      Sound.init(); Sound.ui();
-      CURRENT_LANG = 'en';
-      const s = loadSave(); s.lang = 'en'; writeSave(s);
-      this.scene.restart();
-    });
-
-    /* --- Кнопка звука --- */
-    const sBtn = this.add.text(W-64, 96, Sound.on ? '♪' : '✕', {
-      fontFamily: FONT, fontSize: '44px',
-      color: Sound.on ? '#8fb4ee' : '#3a4a68', fontStyle: 'bold'
-    }).setOrigin(0.5).setInteractive({ useHandCursor:true });
-    sBtn.on('pointerdown', () => {
-      Sound.init();
-      Sound.on = !Sound.on;
-      const s = loadSave(); s.sound = Sound.on; writeSave(s);
-      sBtn.setText(Sound.on ? '♪' : '✕');
-      sBtn.setColor(Sound.on ? '#8fb4ee' : '#3a4a68');
-      if (Sound.on) Sound.ui();
-    });
-
-    /* --- Главная кнопка --- */
-    const playLabel = save.max > 1
-      ? L('continue') + ' · ' + Math.min(save.max, LEVELS_TOTAL)
-      : L('play');
-    makeButton(this, W/2, 300, 340, 96, playLabel, 0x2f5fa8, () => {
-      this.scene.start('game', { level: Math.min(save.max, LEVELS_TOTAL) });
-    }, 34);
-
-    this.add.text(W/2, 410, L('levels'), {
-      fontFamily: FONT, fontSize: '24px', color: '#5f7aa8', fontStyle: 'bold'
-    }).setOrigin(0.5);
-
-    /* --- Сетка уровней --- */
-    const cols = 6, bw = 76, gap = 14, dy = 88;
-    const x0 = (W - (cols*bw + (cols-1)*gap))/2 + bw/2;
-    const y0 = 500;
-
-    const rankColor = { S:'#ffd54f', A:'#7fd4ff', B:'#a9e07a', C:'#8899aa' };
-
-    for (let i=1; i<=LEVELS_TOTAL; i++){
-      const col = (i-1) % cols;
-      const row = Math.floor((i-1)/cols);
-      const x = x0 + col*(bw+gap);
-      const y = y0 + row*dy;
-      const unlocked = i <= save.max;
-      const stars = save.stars[i] || 0;
-      const rank  = save.ranks[i];
-
-      const btn = this.add.container(x, y);
-      const bg = this.add.graphics();
-      bg.fillStyle(unlocked ? 0x1b2a4a : 0x121a2c, 1);
-      bg.fillRoundedRect(-bw/2, -bw/2, bw, bw, 18);
-      bg.lineStyle(2, unlocked ? 0x3a5a92 : 0x1e2a42, 1);
-      bg.strokeRoundedRect(-bw/2, -bw/2, bw, bw, 18);
-
-      const num = this.add.text(0, -8, String(i), {
-        fontFamily: FONT, fontSize: '28px',
-        color: unlocked ? '#dbe7ff' : '#3a4a68', fontStyle: 'bold'
-      }).setOrigin(0.5);
-
-      const st = this.add.text(0, 20, stars ? '★'.repeat(stars) : '', {
-        fontFamily: FONT, fontSize: '14px', color: '#ffcf6b'
-      }).setOrigin(0.5);
-
-      btn.add([bg, num, st]);
-
-      if (rank){
-        const rk = this.add.text(bw/2 - 8, -bw/2 + 8, rank, {
-          fontFamily: FONT, fontSize: '18px',
-          color: rankColor[rank] || '#8899aa', fontStyle: 'bold'
-        }).setOrigin(1, 0);
-        btn.add(rk);
-      }
-
-      btn.setSize(bw, bw);
-
-      if (unlocked){
-        btn.setInteractive({ useHandCursor:true });
-        btn.on('pointerdown', () => {
-          Sound.init(); Sound.ui();
-          this.tweens.add({ targets:btn, scale:0.9, duration:70, yoyo:true });
-          this.scene.start('game', { level: i });
-        });
-      }
+  },
+  flash: function (scene, x, y, r) {
+    const f = scene.add.circle(x, y, r, 0xffffff, 0.65).setDepth(940);
+    scene.tweens.add({ targets: f, alpha: 0, scale: 1.5, duration: 200, onComplete: function () { f.destroy(); } });
+  },
+  ring: function (scene, x, y, color, fromR, toR, dur) {
+    const r = scene.add.circle(x, y, fromR, color, 0).setStrokeStyle(3, color, 0.9).setDepth(940);
+    scene.tweens.add({ targets: r, scale: toR / fromR, alpha: 0, duration: dur || 400, ease: 'Cubic.Out', onComplete: function () { r.destroy(); } });
+  },
+  ambient: function (scene, count, depth) {
+    count = count || 25; depth = depth == null ? -5 : depth;
+    const W = scene.scale.width, H = scene.scale.height;
+    for (let i = 0; i < count; i++) {
+      const color = Core.PALETTE[i % Core.PALETTE.length];
+      const r = 3 + Math.random() * 10;
+      const x = Math.random() * W, y = H + Math.random() * H;
+      const p = scene.add.circle(x, y, r, color, 0.10 + Math.random() * 0.08).setDepth(depth);
+      scene.tweens.add({
+        targets: p, y: -50, x: x + (Math.random() - 0.5) * 120,
+        duration: 12000 + Math.random() * 12000, repeat: -1, ease: 'Linear',
+        onRepeat: function () { p.x = Math.random() * W; p.y = H + 20; }
+      });
+      scene.tweens.add({ targets: p, alpha: 0.03, duration: 2000 + Math.random() * 2000, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     }
+  },
+  trailPuff: function (scene, x, y, color) {
+    const p = scene.add.circle(x, y, 5 + Math.random() * 3, color, 0.55).setDepth(930);
+    scene.tweens.add({ targets: p, scale: 0.2, alpha: 0, duration: 280, ease: 'Cubic.Out', onComplete: function () { p.destroy(); } });
+  },
+  screenFlash: function (scene, color, alpha, dur) {
+    const W = scene.scale.width, H = scene.scale.height;
+    const f = scene.add.rectangle(0, 0, W, H, color || 0xffffff, alpha || 0.2).setOrigin(0).setDepth(935);
+    scene.tweens.add({ targets: f, alpha: 0, duration: dur || 220, onComplete: function () { f.destroy(); } });
+  }
+};
+
+Core.makeCoinTexture = function (scene) {
+  if (scene.textures.exists('coin_icon')) return;
+  const size = 64, cx = size / 2, cy = size / 2, r = size / 2 - 2;
+  const g = scene.add.graphics();
+  g.fillStyle(0x8b6914, 1); g.fillCircle(cx, cy, r);
+  g.fillStyle(0xffd93d, 1); g.fillCircle(cx, cy, r - 2);
+  g.lineStyle(2, 0xd4a017, 0.9); g.strokeCircle(cx, cy, r - 8);
+  g.fillStyle(0xfff0a0, 0.85); g.fillCircle(cx - r * 0.35, cy - r * 0.35, r * 0.3);
+  g.fillStyle(0xffffff, 0.9);  g.fillCircle(cx - r * 0.45, cy - r * 0.45, r * 0.1);
+  g.generateTexture('coin_icon', size, size); g.destroy();
+};
+
+Core.renderBall = function (scene, radius, color, skinKey) {
+  const skin = Core.Skins.balls[skinKey] || Core.Skins.balls.classic;
+  const c = scene.add.container(0, 0);
+  const r = radius;
+  switch (skin.style) {
+    case 'flat':
+      c.add(scene.add.circle(0, 0, r, color));
+      c.add(scene.add.circle(0, 0, r).setStrokeStyle(3, 0x000000, 0.35));
+      c.add(scene.add.circle(-r * 0.25, -r * 0.25, r * 0.22, 0xffffff, 0.25));
+      break;
+    case 'neon':
+      c.add(scene.add.circle(0, 0, r + 7, color, 0.25));
+      c.add(scene.add.circle(0, 0, r + 3, color, 0.45));
+      c.add(scene.add.circle(0, 0, r, color));
+      c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0xffffff, 0.85));
+      c.add(scene.add.circle(-r * 0.3, -r * 0.3, r * 0.28, 0xffffff, 0.7));
+      break;
+    case 'metal':
+      c.add(scene.add.circle(r * 0.15, r * 0.2, r * 0.85, 0x000000, 0.35));
+      c.add(scene.add.circle(0, 0, r, 0x202028));
+      c.add(scene.add.circle(0, 0, r - 2, color));
+      c.add(scene.add.circle(0, 0, r - 7, 0x000000, 0.18));
+      c.add(scene.add.circle(-r * 0.32, -r * 0.32, r * 0.3, 0xffffff, 0.7));
+      c.add(scene.add.circle(r * 0.38, r * 0.42, r * 0.2, 0x000000, 0.35));
+      break;
+    default: // glossy
+      c.add(scene.add.circle(4, 6, r - 6, 0x000000, 0.15));
+      c.add(scene.add.circle(0, 0, r, color));
+      c.add(scene.add.circle(-r * 0.3, -r * 0.3, r * 0.3, 0xffffff, 0.35));
+  }
+  return c;
+};
+
+Core.coinLabel = function (scene, x, y, amount, opts) {
+  opts = opts || {};
+  const fs = opts.fontSize || 22;
+  const iconSize = opts.iconSize || Math.round(fs * 1.05);
+  const gap = opts.gap || 6;
+  const color = opts.color || '#ffd93d';
+  const stroke = opts.stroke || '#000000';
+  const st = opts.strokeThickness != null ? opts.strokeThickness : 3;
+  const anchor = opts.anchor || 'center';
+  const fmt = function (v) { return typeof v === 'number' ? v.toLocaleString('ru-RU') : String(v); };
+
+  const txt = scene.add.text(0, 0, fmt(amount), {
+    fontFamily: Core.FONT, fontSize: fs + 'px', fontStyle: '900', color: color, stroke: stroke, strokeThickness: st
+  }).setOrigin(0, 0.5);
+  const layout = function () {
+    const totalW = iconSize + gap + txt.width;
+    let startX = anchor === 'center' ? -totalW / 2 : (anchor === 'right' ? -totalW : 0);
+    icon.x = startX + iconSize / 2;
+    txt.x = startX + iconSize + gap;
+  };
+  const icon = scene.add.image(0, 0, 'coin_icon').setDisplaySize(iconSize, iconSize);
+  const c = scene.add.container(x, y);
+  c.add([icon, txt]);
+  layout();
+  c.__setAmount = function (v) { txt.setText(fmt(v)); layout(); };
+  c.__tickTo = function (target, dur) {
+    const startV = parseFloat(String(txt.text).replace(/[^\d.-]/g, '')) || 0;
+    scene.tweens.addCounter({
+      from: startV, to: target, duration: dur || 500,
+      onUpdate: function (tw) { c.__setAmount(Math.round(tw.getValue())); },
+      onComplete: function () { c.__setAmount(target); }
+    });
+  };
+  return c;
+};
+
+Core.makeGradients = function (scene) {
+  function grad(key, w, h, top, bot, rad) {
+    if (scene.textures.exists(key)) return;
+    const g = scene.add.graphics();
+    g.fillGradientStyle(top, top, bot, bot, 1);
+    g.fillRoundedRect(0, 0, w, h, rad);
+    g.generateTexture(key, w, h); g.destroy();
+  }
+  grad('btn_big',   320, 120, 0x66e0bb, 0x2eae86, 22);
+  grad('btn_small', 170, 70,  0x4ecca3, 0x2a9070, 16);
+  grad('btn_menu',  240, 70,  0x4ecca3, 0x2a9070, 16);
+  grad('btn_daily', 340, 100, 0xffd93d, 0xd4a017, 20);
+  grad('btn_daily_done', 340, 100, 0x3a3a4a, 0x2a2a3a, 20);
+  Core.makeCoinTexture(scene);
+};
+
+Core.TextStyles = {
+  title: function (size) {
+    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffffff',
+      stroke: '#0f3460', strokeThickness: Math.max(4, size * 0.12),
+      shadow: { offsetX: 0, offsetY: 4, color: '#000000', blur: 0, fill: true } };
+  },
+  heading: function (size) {
+    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffffff',
+      stroke: '#0f3460', strokeThickness: 3,
+      shadow: { offsetX: 0, offsetY: 3, color: '#00000055', blur: 4, fill: true } };
+  },
+  soft: function (size, color) {
+    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '700', color: color || '#aaaaaa' };
+  },
+  gold: function (size) {
+    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffd93d',
+      stroke: '#000000', strokeThickness: 3,
+      shadow: { offsetX: 0, offsetY: 2, color: '#00000088', blur: 3, fill: true } };
+  }
+};
+
+Core.showAchievement = function (scene, achId) {
+  const ach = Core.Achievements.list.find(function (a) { return a.id === achId; });
+  if (!ach) return;
+  Core.Audio.achievement();
+  Core.Juice.vibrate([20, 15, 30]);
+  const W = scene.scale.width;
+  const c = scene.add.container(W / 2, -100).setDepth(2000);
+  c.add(scene.add.rectangle(0, 0, 420, 90, 0x1a1a2e).setStrokeStyle(3, 0xffd93d));
+  c.add(scene.add.text(-170, 0, ach.icon, { fontSize: '44px' }).setOrigin(0.5));
+  c.add(scene.add.text(-130, -18, 'ДОСТИЖЕНИЕ!', {
+    fontFamily: Core.FONT, fontSize: '13px', fontStyle: '900', color: '#ffd93d'
+  }).setOrigin(0, 0.5));
+  c.add(scene.add.text(-130, 8, ach.name, {
+    fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#ffffff'
+  }).setOrigin(0, 0.5));
+  c.add(scene.add.text(-130, 30, ach.desc, {
+    fontFamily: Core.FONT, fontSize: '12px', fontStyle: '700', color: '#888888'
+  }).setOrigin(0, 0.5));
+  scene.tweens.add({ targets: c, y: 130, duration: 500, ease: 'Back.Out' });
+  scene.tweens.add({ targets: c, y: -120, duration: 500, delay: 2400, ease: 'Back.In', onComplete: function () { c.destroy(); } });
+};
+
+class BaseGameScene extends Phaser.Scene {
+  init(data) {
+    this.mode = (data && data.mode) || 'level';
+    this.level = (data && data.level) || Core.SDK.get('level', 1);
+    this.seed = (data && data.seed) || null;
+    this.isDaily = this.mode === 'daily';
+  }
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    this.cameras.main.setBackgroundColor('#0f3460');
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 22, -5);
+
+    this.moves = 0; this.score = 0; this.animating = false;
+    this.levelJustFinished = false;
+    this.hintsLeft = Core.SDK.get('hintsOwned', 3);
+    this.undoCount = 0; this.combo = 0; this.maxCombo = 0;
+    this.savedHints = this.hintsLeft;
+    this.bestScore = this.isDaily ? 0 : (Core.SDK.get('bestScores', {})[this.level] || 0);
+    this.bestStars = this.isDaily ? 0 : (Core.SDK.get('bestStars', {})[this.level] || 0);
+    this.skin = Core.Skins.tubes[Core.SDK.get('currentSkin', 'classic')] || Core.Skins.tubes.classic;
+
+    this.createTopBar();
+    this.buildLevel(this.level);
+    this.resetState();
+    this.createBottomBar();
+    Core.SDK.gameplayStart();
+    this.cameras.main.fadeIn(280, 0, 0, 0);
+  }
+  createTopBar() {
+    const W = this.scale.width;
+    const bar = this.add.graphics();
+    bar.fillStyle(0x000000, 0.3); bar.fillRect(0, 0, W, 90);
+    const back = this.add.text(20, 45, '←', {
+      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => { Core.SDK.gameplayStop(); this.scene.start('Menu'); });
+    let title = 'Уровень ' + this.level;
+    if (this.isDaily) title = '🎁 Ежедневный';
+    this.add.text(W / 2, 30, title, Core.TextStyles.heading(26)).setOrigin(0.5);
+    const subtitle = this.bestScore > 0 ? 'Рекорд: ★ ' + this.bestScore : (this.isDaily ? 'Только раз в день' : '');
+    this.add.text(W / 2, 62, subtitle, Core.TextStyles.soft(13, '#888888')).setOrigin(0.5);
+    this.coinLabel = Core.coinLabel(this, 20, 110, Core.SDK.get('coins', 0), { fontSize: 18, iconSize: 20, anchor: 'left' });
+    this.scoreText = this.add.text(W - 20, 28, '★ 0', {
+      fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#ffd93d', stroke: '#000000', strokeThickness: 3
+    }).setOrigin(1, 0.5);
+    this.movesText = this.add.text(W - 20, 66, 'Ходы: 0', Core.TextStyles.soft(14, '#aaaaaa')).setOrigin(1, 0.5);
+    this.comboText = this.add.text(W - 20, 108, '', {
+      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ff9f43', stroke: '#000000', strokeThickness: 3
+    }).setOrigin(1, 0.5).setVisible(false);
+  }
+  updateMoves() { if (this.movesText) this.movesText.setText('Ходы: ' + this.moves); }
+  updateScore(smooth) {
+    if (!this.scoreText) return;
+    const self = this;
+    const prev = parseInt(String(this.scoreText.text).replace(/[^\d-]/g, ''), 10) || 0;
+    if (smooth === false) { this.scoreText.setText('★ ' + this.score); return; }
+    this.tweens.addCounter({
+      from: prev, to: this.score, duration: 260,
+      onUpdate: function (tw) { self.scoreText.setText('★ ' + Math.round(tw.getValue())); },
+      onComplete: function () { self.scoreText.setText('★ ' + self.score); }
+    });
+  }
+  updateCoins() { if (this.coinLabel) this.coinLabel.__setAmount(Core.SDK.get('coins', 0)); }
+  updateComboIndicator() {
+    if (!this.comboText) return;
+    if (this.combo < 2) { this.comboText.setVisible(false); return; }
+    this.comboText.setText('x' + this.combo + ' КОМБО');
+    this.comboText.setVisible(true);
+    this.tweens.add({ targets: this.comboText, scale: 1.35, duration: 140, yoyo: true, ease: 'Quad.Out' });
+  }
+  addScore(pts, tubeIndex, opts) {
+    opts = opts || {};
+    if (pts <= 0) return;
+    this.score += pts; this.updateScore(true);
+    const g = (this.tubeGeom || [])[tubeIndex];
+    if (g) {
+      const size = opts.size || 26;
+      const color = opts.color || '#ffd93d';
+      const t = this.add.text(g.x, g.y - g.h / 2 - 16, '+' + pts, {
+        fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: color,
+        stroke: '#000000', strokeThickness: 4
+      }).setOrigin(0.5).setDepth(1000).setScale(0);
+      this.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.Out' });
+      this.tweens.add({ targets: t, y: t.y - 65, alpha: 0, duration: 800, delay: 200, ease: 'Cubic.Out', onComplete: () => t.destroy() });
+    }
+    this.tweens.add({ targets: this.scoreText, scale: 1.25, duration: 130, yoyo: true, ease: 'Quad.Out' });
+    Core.Audio.score();
+  }
+  createBottomBar() {
+    const W = this.scale.width, H = this.scale.height;
+    const y = H - 90;
+    this.undoBtn = this.makeBtn(W / 2 - 100, y, '↶', 'Отмена', () => this.doUndo());
+    this.hintBtn = this.makeBtn(W / 2 + 100, y, '💡', 'Подсказка (' + this.hintsLeft + ')', () => this.doHint());
+    this.refreshUndoButton();
+  }
+  makeBtn(x, y, icon, label, onClick) {
+    const c = this.add.container(x, y);
+    const img = this.add.image(0, 0, 'btn_small').setOrigin(0.5);
+    c.add(img);
+    c.add(this.add.text(0, -12, icon, {
+      fontFamily: Core.FONT, fontSize: '28px', fontStyle: '900', color: '#ffffff', stroke: '#0f3460', strokeThickness: 2
+    }).setOrigin(0.5));
+    const labelT = this.add.text(0, 18, label, Core.TextStyles.soft(13, '#0f3460')).setOrigin(0.5);
+    c.add(labelT);
+    img.setInteractive({ useHandCursor: true });
+    img.on('pointerover', () => img.setTint(0xc9ffe8));
+    img.on('pointerout',  () => img.clearTint());
+    img.on('pointerdown', onClick);
+    return { container: c, labelT: labelT, bg: img };
+  }
+  refreshUndoButton() {
+    if (!this.undoBtn) return;
+    const disabled = !this.undoStack || this.undoStack.length === 0 || this.animating;
+    this.undoBtn.container.setAlpha(disabled ? 0.4 : 1);
+  }
+  showToast(msg) {
+    const W = this.scale.width, H = this.scale.height;
+    const t = this.add.text(W / 2, H * 0.85, msg, {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+      backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setDepth(1000);
+    this.tweens.add({ targets: t, alpha: 0, y: H * 0.8, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+  }
+  async doHint() {
+    if (this.animating) return;
+    if (this.hintsLeft > 0) {
+      this.hintsLeft--;
+      Core.SDK.save({ hintsOwned: this.hintsLeft });
+      this.updateHintLabel(); this.showHint(); return;
+    }
+    this.offerHintPurchase();
+  }
+  offerHintPurchase() {
+    const W = this.scale.width, H = this.scale.height;
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0).setInteractive().setDepth(1001);
+    const panel = this.add.container(W / 2, H / 2).setDepth(1002);
+    panel.add(this.add.rectangle(0, 0, 440, 340, 0x1a1a2e).setStrokeStyle(4, 0x4ecca3));
+    panel.add(this.add.text(0, -130, 'Нет подсказок', Core.TextStyles.title(32)).setOrigin(0.5));
+    panel.add(this.add.text(0, -80, 'Как получить ещё?', Core.TextStyles.soft(16, '#cccccc')).setOrigin(0.5));
+    const coins = Core.SDK.get('coins', 0), canBuy = coins >= 30;
+    const adBtn = this.add.rectangle(0, -25, 380, 60, 0x4ecca3).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    panel.add(adBtn);
+    panel.add(this.add.text(0, -25, '🎬  +1 за рекламу', {
+      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#0f3460'
+    }).setOrigin(0.5));
+    adBtn.on('pointerover', () => adBtn.setFillStyle(0x5ddcb3));
+    adBtn.on('pointerout',  () => adBtn.setFillStyle(0x4ecca3));
+    adBtn.on('pointerdown', async () => {
+      overlay.destroy(); panel.destroy();
+      this.showToast('Смотрим рекламу...');
+      const ok = await Core.SDK.rewarded();
+      if (ok) { this.hintsLeft++; Core.SDK.save({ hintsOwned: this.hintsLeft }); this.updateHintLabel(); this.showHint(); }
+      else this.showToast('Реклама недоступна');
+    });
+    const buyBtn = this.add.rectangle(0, 50, 380, 60, canBuy ? 0xffd93d : 0x3a3a4a).setOrigin(0.5);
+    if (canBuy) buyBtn.setInteractive({ useHandCursor: true });
+    panel.add(buyBtn);
+    panel.add(this.add.text(0, 50, canBuy ? 'Купить за 30' : 'Не хватает монет', {
+      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: canBuy ? '#0f3460' : '#888888'
+    }).setOrigin(0.5));
+    if (canBuy) {
+      buyBtn.on('pointerover', () => buyBtn.setFillStyle(0xffe566));
+      buyBtn.on('pointerout',  () => buyBtn.setFillStyle(0xffd93d));
+      buyBtn.on('pointerdown', () => {
+        overlay.destroy(); panel.destroy();
+        Core.SDK.save({ coins: coins - 30, hintsOwned: this.hintsLeft + 1 });
+        this.hintsLeft++; this.updateHintLabel(); this.updateCoins();
+        Core.Audio.buy(); this.showToast('Куплено!'); this.showHint();
+      });
+    }
+    const close = this.add.text(0, 130, 'Отмена', Core.TextStyles.soft(16, '#888888')).setOrigin(0.5).setInteractive();
+    close.on('pointerdown', () => { overlay.destroy(); panel.destroy(); });
+    panel.add(close);
+    panel.setScale(0.7); panel.setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 300, ease: 'Back.Out' });
+  }
+  updateHintLabel() { if (this.hintBtn) this.hintBtn.labelT.setText('Подсказка (' + this.hintsLeft + ')'); }
+  showCombo(n) {
+    const W = this.scale.width;
+    const isBig = n >= 5, isHuge = n >= 10;
+    if (isBig) {
+      Core.Audio.bigCombo();
+      this.cameras.main.shake(220, 0.005);
+      Core.Juice.screenFlash(this, 0xffd93d, 0.22, 240);
+      this.tweens.add({ targets: this.cameras.main, zoom: 1.03, duration: 150, yoyo: true, ease: 'Sine.InOut' });
+      Core.Juice.vibrate([30, 20, 40]);
+    } else { Core.Audio.combo(n); Core.Juice.vibrate(15); }
+    const fontSize = isHuge ? 56 : (isBig ? 46 : 38);
+    const t = this.add.text(W / 2, 190, 'x' + n + ' КОМБО!', Core.TextStyles.title(fontSize)).setOrigin(0.5).setDepth(1500);
+    t.setScale(0.2);
+    this.tweens.add({ targets: t, scale: 1, duration: 300, ease: 'Back.Out' });
+    this.tweens.add({ targets: t, alpha: 0, y: 140, duration: 800, delay: 600, onComplete: function () { t.destroy(); } });
+    if (isBig) Core.Juice.burst(this, W / 2, 190, 0xffd93d, 24, 160);
+  }
+  getStars() {
+    const usedHints = (this.savedHints - this.hintsLeft);
+    const used = usedHints + this.undoCount;
+    if (used === 0) return 3;
+    if (used <= 2) return 2;
+    return 1;
+  }
+  checkAchievementsAfterWin(stars, totalLevelsAfter) {
+    const unlocked = [];
+    const totalLevels = totalLevelsAfter || Core.SDK.get('totalLevelsCompleted', 0);
+    const coins = Core.SDK.get('coins', 0);
+    const ownedSkins = Core.SDK.get('ownedSkins', []);
+    if (totalLevels >= 1 && Core.Achievements.unlock('first_win')) unlocked.push('first_win');
+    if (stars === 3 && totalLevels >= 2 && Core.Achievements.unlock('three_stars')) unlocked.push('three_stars');
+    if (this.maxCombo >= 10 && this.colors >= 5 && Core.Achievements.unlock('combo_10')) unlocked.push('combo_10');
+    if (totalLevels >= 10 && Core.Achievements.unlock('ten_levels')) unlocked.push('ten_levels');
+    if (totalLevels >= 50 && Core.Achievements.unlock('fifty_levels')) unlocked.push('fifty_levels');
+    if (this.isDaily && Core.Achievements.unlock('daily_done')) unlocked.push('daily_done');
+    if (coins >= 1000 && Core.Achievements.unlock('rich')) unlocked.push('rich');
+    if (ownedSkins.length >= 4 && Core.Achievements.unlock('all_skins')) unlocked.push('all_skins');
+    unlocked.forEach((id, i) => {
+      this.time.delayedCall(1400 + i * 900, () => Core.showAchievement(this, id));
+    });
+  }
+  onLevelComplete() {
+    if (this.levelJustFinished) return;
+    this.levelJustFinished = true;
+    const stars = this.getStars();
+    const starBonus = stars * 100;
+    this.starBonus = starBonus;
+    this.score += starBonus; this.updateScore(true);
+    const baseCoins = 20 + stars * 10;
+    const isNewRecord = this.isDaily ? false : (this.score > this.bestScore);
+    const recordBonus = isNewRecord ? 20 : 0;
+    let coinsEarned = baseCoins + recordBonus;
+    if (this.isDaily) coinsEarned += 100;
+    this.coinsEarned = coinsEarned;
+    const patch = {};
+    if (this.isDaily) {
+      patch.dailyDate = todayStr();
+      patch.dailyStars = Math.max(Core.SDK.get('dailyStars', 0), stars);
+    } else {
+      const bestScores = Core.SDK.get('bestScores', {});
+      if (isNewRecord) bestScores[this.level] = this.score;
+      patch.bestScores = bestScores;
+      const bestStars = Core.SDK.get('bestStars', {});
+      if (stars > (bestStars[this.level] || 0)) bestStars[this.level] = stars;
+      patch.bestStars = bestStars;
+      this.level++;
+      patch.level = this.level;
+    }
+    patch.totalScore = Core.SDK.get('totalScore', 0) + this.score;
+    patch.coins = Core.SDK.get('coins', 0) + coinsEarned;
+    patch.totalLevelsCompleted = Core.SDK.get('totalLevelsCompleted', 0) + 1;
+    patch.hintsOwned = this.hintsLeft;
+    Core.SDK.save(patch);
+    this.levelScore = this.score;
+    this.totalScore = patch.totalScore;
+    this.totalCoins = patch.coins;
+    this.isNewRecord = isNewRecord;
+    this.starsGot = stars;
+    Core.Audio.win();
+    if (isNewRecord) this.time.delayedCall(500, () => Core.Audio.record());
+    Core.Juice.vibrate([40, 40, 40, 40, 80]);
+    this.cameras.main.shake(280, 0.004);
+    Core.Juice.screenFlash(this, 0xffffff, 0.35, 400);
+    this.spawnConfetti();
+    this.checkAchievementsAfterWin(stars, patch.totalLevelsCompleted);
+    this.time.delayedCall(1100, () => this.showWinPanel());
+  }
+  spawnConfetti() {
+    const W = this.scale.width, H = this.scale.height;
+    for (let i = 0; i < 110; i++) {
+      const c = Core.PALETTE[i % Core.PALETTE.length];
+      const rect = this.add.rectangle(Math.random() * W, -20, 6 + Math.random() * 10, 6 + Math.random() * 10, c).setDepth(900);
+      this.tweens.add({
+        targets: rect, y: H + 40, x: rect.x + (Math.random() - 0.5) * 400,
+        angle: Math.random() * 720 - 360, duration: 1800 + Math.random() * 1400, ease: 'Cubic.In',
+        onComplete: () => rect.destroy()
+      });
+    }
+  }
+  showWinPanel() {
+    const W = this.scale.width, H = this.scale.height;
+    const stars = this.starsGot;
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive().setDepth(1001);
+    const panel = this.add.container(W / 2, H / 2).setDepth(1002);
+    panel.add(this.add.rectangle(0, 0, 460, 580, 0x1a1a2e).setStrokeStyle(4, this.isDaily ? 0xffd93d : 0x4ecca3));
+    const title = this.isDaily ? '🎁 ЕЖЕДНЕВНЫЙ!' : 'ПОБЕДА!';
+    panel.add(this.add.text(0, -240, title, Core.TextStyles.title(44)).setOrigin(0.5));
+    for (let i = 0; i < 3; i++) {
+      const on = i < stars;
+      const star = this.add.text(-80 + i * 80, -160, '★', {
+        fontFamily: Core.FONT, fontSize: '64px', fontStyle: '900',
+        color: on ? '#ffd93d' : '#333a4a', stroke: on ? '#b8860b' : '#1a1a2e', strokeThickness: on ? 4 : 2
+      }).setOrigin(0.5).setAlpha(0).setScale(0.3);
+      panel.add(star);
+      this.tweens.add({ targets: star, alpha: 1, scale: on ? 1 : 0.85, duration: 380, delay: 200 + i * 140, ease: 'Back.Out' });
+    }
+    if (this.isNewRecord) {
+      const rec = this.add.text(0, -100, '🏆 НОВЫЙ РЕКОРД!', {
+        fontFamily: Core.FONT, fontSize: '24px', fontStyle: '900', color: '#ffd93d',
+        stroke: '#000000', strokeThickness: 4
+      }).setOrigin(0.5).setAlpha(0).setScale(0.3);
+      panel.add(rec);
+      this.tweens.add({ targets: rec, alpha: 1, scale: 1, duration: 500, delay: 900, ease: 'Back.Out' });
+      this.tweens.add({ targets: rec, scale: 1.06, duration: 500, delay: 1500, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    }
+    panel.add(this.add.text(0, -60, '★ ' + this.levelScore, Core.TextStyles.gold(38)).setOrigin(0.5));
+    panel.add(this.add.text(0, -20,
+      '+' + this.starBonus + ' за звёзды' + (this.isDaily ? ' · +100 за дейлик' : (this.isNewRecord ? ' · +20 за рекорд' : '')),
+      Core.TextStyles.soft(14, '#4ecca3')).setOrigin(0.5));
+    const coinsLabel = Core.coinLabel(this, 0, 25, 0, { fontSize: 24, iconSize: 26, anchor: 'center' });
+    panel.add(coinsLabel);
+    this.time.delayedCall(500, () => { coinsLabel.__tickTo(this.coinsEarned, 900); });
+    panel.add(this.add.text(0, 70, 'Ходов: ' + this.moves, Core.TextStyles.soft(14, '#888888')).setOrigin(0.5));
+    panel.add(this.add.text(0, 97, 'Всего очков: ' + this.totalScore, Core.TextStyles.soft(14, '#7fd4c1')).setOrigin(0.5));
+    panel.add(this.add.text(0, 120, 'Монет всего: ' + this.totalCoins, {
+      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#ffd93d'
+    }).setOrigin(0.5));
+    if (this.isDaily) {
+      const menuBtn = this.add.image(0, 190, 'btn_menu').setOrigin(0.5).setInteractive({ useHandCursor: true });
+      panel.add(menuBtn);
+      panel.add(this.add.text(0, 190, 'В меню', Core.TextStyles.heading(24)).setOrigin(0.5));
+      menuBtn.on('pointerover', () => menuBtn.setTint(0xc9ffe8));
+      menuBtn.on('pointerout',  () => menuBtn.clearTint());
+      menuBtn.on('pointerdown', () => { overlay.destroy(); panel.destroy(); Core.SDK.gameplayStop(); this.scene.start('Menu'); });
+    } else {
+      const nextBtn = this.add.image(0, 190, 'btn_menu').setOrigin(0.5).setInteractive({ useHandCursor: true });
+      panel.add(nextBtn);
+      panel.add(this.add.text(0, 190, 'Далее →', Core.TextStyles.heading(24)).setOrigin(0.5));
+      nextBtn.on('pointerover', () => nextBtn.setTint(0xc9ffe8));
+      nextBtn.on('pointerout',  () => nextBtn.clearTint());
+      nextBtn.on('pointerdown', () => {
+        overlay.destroy(); panel.destroy();
+        const nextLevel = this.level;
+        const needAd = ((nextLevel - 1) % 3 === 0) && nextLevel > 1;
+        if (needAd) { Core.SDK.interstitial(); this.time.delayedCall(500, () => this.scene.restart({ level: nextLevel, mode: 'level' })); }
+        else this.scene.restart({ level: nextLevel, mode: 'level' });
+      });
+      const menuT = this.add.text(0, 245, 'В меню', Core.TextStyles.soft(16, '#888888')).setOrigin(0.5).setInteractive();
+      menuT.on('pointerdown', () => { Core.SDK.gameplayStop(); this.scene.start('Menu'); });
+      panel.add(menuT);
+    }
+    panel.setScale(0.6); panel.setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 500, ease: 'Back.Out' });
+  }
+  buildLevel(level) { throw new Error('not implemented'); }
+  resetState() { throw new Error('not implemented'); }
+  doUndo() {}
+  showHint() {}
+}
+
+class BootScene extends Phaser.Scene {
+  constructor() { super('Boot'); }
+  async create() {
+    const W = this.scale.width, H = this.scale.height;
+    this.cameras.main.setBackgroundColor('#0f3460');
+    const loading = this.add.text(W / 2, H / 2, 'Загрузка...', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.tweens.add({ targets: loading, alpha: 0.35, duration: 600, yoyo: true, repeat: -1 });
+    
+    try {
+      await Promise.race([
+        document.fonts.load('900 32px Nunito'),
+        document.fonts.load('800 32px Nunito'),
+        document.fonts.load('700 32px Nunito'),
+        document.fonts.ready,
+        new Promise(function (r) { setTimeout(r, 2500); })
+      ]);
+    } catch (e) {}
+    
+    Core.makeGradients(this);
+    await Core.SDK.init();
+    loading.destroy();
+    this.scene.start('Menu');
   }
 }
 
-/* ============================================================
-   ИГРА
-   ============================================================ */
-class GameScene extends Phaser.Scene {
-  constructor(){ super('game'); }
+class MenuScene extends Phaser.Scene {
+  constructor() { super('Menu'); }
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 18, -1);
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * W, y = Math.random() * H;
+      const size = 1 + Math.random() * 2.5;
+      const star = this.add.circle(x, y, size, 0xffffff, 0.4 + Math.random() * 0.4).setDepth(-1);
+      this.tweens.add({ targets: star, alpha: 0.05, duration: 1200 + Math.random() * 2000, yoyo: true, repeat: -1, ease: 'Sine.InOut', delay: Math.random() * 2000 });
+    }
 
-  init(data){
-    this.levelNum = (data && data.level) || 1;
+    // Кнопка возврата на сайт
+    const portalBtn = this.add.text(20, 45, '← На сайт', {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800',
+      color: '#ffffff', backgroundColor: '#00000099', padding: { x: 12, y: 8 }
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    
+    portalBtn.on('pointerover', () => portalBtn.setColor('#4ecca3'));
+    portalBtn.on('pointerout',  () => portalBtn.setColor('#ffffff'));
+    portalBtn.on('pointerdown', () => {
+      window.location.href = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
+    });
+
+    const title = this.add.text(W / 2, H * 0.13, 'PUZZLE FLOW', Core.TextStyles.title(52)).setOrigin(0.5);
+    this.tweens.add({ targets: title, scale: 1.04, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    this.add.text(W / 2, H * 0.19, GameRegistry.title, {
+      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '800',
+      color: '#7fd4c1', stroke: '#0f3460', strokeThickness: 2
+    }).setOrigin(0.5);
+
+    const totalScore = Core.SDK.get('totalScore', 0);
+    const coins = Core.SDK.get('coins', 0);
+    this.add.text(W / 2 - 80, H * 0.25, '★ ' + totalScore, Core.TextStyles.gold(20)).setOrigin(0.5);
+    Core.coinLabel(this, W / 2 + 80, H * 0.25, coins, { fontSize: 20, iconSize: 22, anchor: 'center' });
+
+    this.createAchievementsButton(W - 50, 50);
+
+    const level = Core.SDK.get('level', 1);
+    this.createBigButton(W / 2, H * 0.37, level, () => {
+      Core.Audio.unlock();
+      this.scene.start(GameRegistry.sceneKey, { level: level, mode: 'level' });
+    });
+    this.createSideButton(W / 2 - 90, H * 0.51, 'Уровни', '🗺', () => this.scene.start('LevelMap'));
+    this.createSideButton(W / 2 + 90, H * 0.51, 'Магазин', '🛒', () => this.scene.start('Shop'));
+
+    const dailyDone = Core.SDK.get('dailyDate', 0) === todayStr();
+    this.createDailyButton(W / 2, H * 0.65, dailyDone, () => {
+      if (dailyDone) { this.showToast('Возвращайся завтра!'); return; }
+      Core.Audio.unlock();
+      this.scene.start(GameRegistry.sceneKey, { mode: 'daily', level: 0, seed: todayStr() });
+    });
+
+    this.createResetButton(W / 2, H * 0.92, level);
+    this.cameras.main.fadeIn(250, 0, 0, 0);
   }
 
-  create(){
-    this.solved       = false;
-    this.failed       = false;
-    this.moves        = 0;
-    this.hintUses     = 2;
-    this.reviveUsed   = false;
-    this._dangerPulse = false;
-    this._lastDangerLevel = 0;
-    this.tiles        = [];
-    this.tileMap      = {};
-    this.levelData    = generateLevel(this.levelNum);
-    this.movesLeft    = this.levelData.moveLimit;
+  createAchievementsButton(x, y) {
+    const count = Core.Achievements.count();
+    const total = Core.Achievements.list.length;
+    const c = this.add.container(x, y);
+    const bg = this.add.circle(0, 0, 34, 0x2a2a4a).setStrokeStyle(2, 0xffd93d, 0.8);
+    c.add(bg);
+    c.add(this.add.text(0, -2, '🏆', { fontSize: '28px' }).setOrigin(0.5));
+    const badge = this.add.circle(24, -24, 14, 0xe74c3c);
+    c.add(badge);
+    c.add(this.add.text(24, -24, count + '', {
+      fontFamily: Core.FONT, fontSize: '13px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0.5));
 
-    this.buildBackground();
-    this.buildBoard();
-    this.buildHUD();
-    this.updateLight();
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
+    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
+    bg.on('pointerdown', () => {
+      Core.Audio.select();
+      this.scene.start('Achievements');
+    });
 
-    this.cameras.main.fadeIn(200, 7, 10, 18);
-  }
-
-  buildBackground(){
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x0b1122, 0x0b1122, 0x151f3c, 0x151f3c, 1);
-    g.fillRect(0, 0, W, H);
-    const rnd = mulberry32(this.levelNum * 331 + 7);
-    for (let i=0; i<70; i++){
-      g.fillStyle(0xaac4ff, 0.04 + rnd()*0.16);
-      g.fillCircle(rnd()*W, rnd()*H, 1 + rnd()*1.8);
-    }
-    for (let i=10; i>0; i--){
-      g.fillStyle(0x2a4a8a, 0.011);
-      g.fillCircle(W/2, 660, 120 + i*40);
-    }
-    for (let i=0; i<24; i++){
-      const st = this.add.circle(rnd()*W, rnd()*H, 1 + rnd()*1.6,
-                                0xcfe0ff, 0.12 + rnd()*0.45)
-        .setBlendMode(Phaser.BlendModes.ADD);
+    if (count > 0) {
       this.tweens.add({
-        targets: st, alpha: { from: st.alpha*0.15, to: st.alpha },
-        duration: 1200 + rnd()*2400, yoyo: true, repeat: -1,
-        delay: rnd()*1700, ease: 'Sine.easeInOut'
+        targets: c, scale: 1.06, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut'
       });
     }
   }
 
-  buildBoard(){
-    const size = this.levelData.size;
-    const cell = Math.min(132, 620/size);
-    const bw   = cell*size;
-    const bx   = (W - bw)/2;
-    const by   = 660 - bw/2;
+  createDailyButton(x, y, done, onClick) {
+    const c = this.add.container(x, y);
+    const img = this.add.image(0, 0, done ? 'btn_daily_done' : 'btn_daily').setOrigin(0.5).setDisplaySize(340, 100);
+    c.add(img);
+    c.add(this.add.text(0, -14, done ? '🎁  ВЫПОЛНЕНО' : '🎁  ЕЖЕДНЕВНЫЙ ВЫЗОВ', {
+      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
+      color: done ? '#888888' : '#0f3460', stroke: done ? '#000000' : '#ffffff', strokeThickness: 2
+    }).setOrigin(0.5));
+    c.add(this.add.text(0, 20, done ? 'Завтра новый' : '+100 монет · только раз в день', {
+      fontFamily: Core.FONT, fontSize: '13px', fontStyle: '700',
+      color: done ? '#666666' : '#3a2a10'
+    }).setOrigin(0.5));
+    img.setInteractive({ useHandCursor: true });
+    img.on('pointerover', () => img.setAlpha(0.85));
+    img.on('pointerout',  () => img.setAlpha(1));
+    img.on('pointerdown', onClick);
+    if (!done) this.tweens.add({ targets: c, scale: 1.03, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  }
 
-    this.cell   = cell;
-    this.boardX = bx;
-    this.boardY = by;
+  createSideButton(x, y, text, icon, onClick) {
+    const c = this.add.container(x, y);
+    const bg = this.add.rectangle(0, 0, 170, 70, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
+    c.add(bg);
+    c.add(this.add.text(0, -10, icon, { fontSize: '26px' }).setOrigin(0.5));
+    c.add(this.add.text(0, 20, text, { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
+    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
+    bg.on('pointerdown', onClick);
+  }
 
-    const pad = 18;
-    const panel = this.add.graphics();
-    panel.fillStyle(0x0e1729, 0.85);
-    panel.fillRoundedRect(bx-pad, by-pad, bw+pad*2, bw+pad*2, 28);
-    panel.lineStyle(2, 0x22335a, 0.9);
-    panel.strokeRoundedRect(bx-pad, by-pad, bw+pad*2, bw+pad*2, 28);
+  showToast(msg) {
+    const W = this.scale.width, H = this.scale.height;
+    const t = this.add.text(W / 2, H * 0.85, msg, {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+      backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setDepth(1000);
+    this.tweens.add({ targets: t, alpha: 0, y: H * 0.8, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+  }
 
-    for (const t of this.levelData.tiles){
-      const px = bx + (t.x + 0.5)*cell;
-      const py = by + (t.y + 0.5)*cell;
-      const cont = this.add.container(px, py);
-      cont.setAngle(t._vis);
+  createBigButton(x, y, level, onClick) {
+    const c = this.add.container(x, y);
+    c.add(this.add.rectangle(0, 8, 320, 120, 0x000000, 0.4).setOrigin(0.5));
+    const img = this.add.image(0, 0, 'btn_big').setOrigin(0.5).setDisplaySize(320, 120);
+    c.add(img);
+    c.add(this.add.text(0, -24, 'ИГРАТЬ', {
+      fontFamily: Core.FONT, fontSize: '38px', fontStyle: '900', color: '#ffffff', stroke: '#0f3460', strokeThickness: 5
+    }).setOrigin(0.5));
+    const badge = this.add.rectangle(0, 30, 220, 42, 0x0f3460, 0.9).setOrigin(0.5).setStrokeStyle(2, 0xffd93d, 0.9);
+    c.add(badge);
+    c.add(this.add.text(0, 30, 'УРОВЕНЬ ' + level, {
+      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#ffd93d', stroke: '#000000', strokeThickness: 2
+    }).setOrigin(0.5));
+    img.setInteractive({ useHandCursor: true });
+    img.on('pointerover', () => img.setTint(0xc9ffe8));
+    img.on('pointerout',  () => img.clearTint());
+    img.on('pointerdown', () => { this.tweens.add({ targets: c, scale: c.scale * 0.95, duration: 80, yoyo: true }); onClick(); });
+    this.tweens.add({ targets: c, scale: 1.03, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  }
 
-      const gap  = cell*0.06;
-      const base = this.add.graphics();
-      base.fillStyle(t.type === 'source' ? 0x1a2740 : 0x141e33, 1);
-      base.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
-      base.lineStyle(2, 0x233257, 1);
-      base.strokeRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
-      cont.add(base);
+  createResetButton(x, y, level) {
+    const c = this.add.container(x, y);
+    const bg = this.add.rectangle(0, 0, 240, 48, 0x2a2a4a, 1).setOrigin(0.5).setStrokeStyle(2, 0x888888, 0.7);
+    c.add(bg);
+    const label = this.add.text(0, 0, '↺  Сбросить прогресс', { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#cccccc' }).setOrigin(0.5);
+    c.add(label);
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerover', () => { bg.setFillStyle(0x3a3a5a); bg.setStrokeStyle(2, 0xff6b6b, 0.9); label.setColor('#ffffff'); });
+    bg.on('pointerout',  () => { bg.setFillStyle(0x2a2a4a); bg.setStrokeStyle(2, 0x888888, 0.7); label.setColor('#cccccc'); });
+    bg.on('pointerdown', () => { this.tweens.add({ targets: c, scale: 0.94, duration: 80, yoyo: true }); this.confirmReset(level); });
+  }
 
-      const glow = this.add.graphics();
-      glow.fillStyle(0xffb545, 1);
-      glow.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
-      glow.setAlpha(0);
-      cont.add(glow);
-      t._glow = glow;
+  confirmReset(currentLevel) {
+    const W = this.scale.width, H = this.scale.height;
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0).setInteractive().setDepth(1001);
+    const panel = this.add.container(W / 2, H / 2).setDepth(1002);
+    panel.add(this.add.rectangle(0, 0, 440, 320, 0x1a1a2e).setStrokeStyle(4, 0xff6b6b));
+    panel.add(this.add.text(0, -110, 'Сбросить прогресс?', Core.TextStyles.heading(26)).setOrigin(0.5));
+    panel.add(this.add.text(0, -40,
+      'Уровень ' + currentLevel + ' → 1\nСчёт, монеты, скины, ачивки обнулятся.', {
+      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '700', color: '#aaaaaa', align: 'center', lineSpacing: 6
+    }).setOrigin(0.5));
+    const yes = this.add.rectangle(-100, 95, 170, 64, 0xff6b6b).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    panel.add(yes);
+    panel.add(this.add.text(-100, 95, 'Сбросить', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
+    yes.on('pointerover', () => yes.setFillStyle(0xff8a8a));
+    yes.on('pointerout',  () => yes.setFillStyle(0xff6b6b));
+    yes.on('pointerdown', async () => {
+      await Core.SDK.save(JSON.parse(JSON.stringify(Core.DEFAULT_SAVE)));
+      overlay.destroy(); panel.destroy(); this.scene.restart();
+    });
+    const no = this.add.rectangle(100, 95, 170, 64, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x888888, 0.7).setInteractive({ useHandCursor: true });
+    panel.add(no);
+    panel.add(this.add.text(100, 95, 'Отмена', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
+    no.on('pointerover', () => no.setFillStyle(0x3a3a5a));
+    no.on('pointerout',  () => no.setFillStyle(0x2a2a4a));
+    no.on('pointerdown', () => { overlay.destroy(); panel.destroy(); });
+    panel.setScale(0.7); panel.setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 300, ease: 'Back.Out' });
+  }
+}
 
-      const pipe = this.add.graphics();
-      drawPipeShape(pipe, t.canonical, cell*0.5, cell*0.13, 0x2e4270, 1);
-      cont.add(pipe);
+class AchievementsScene extends Phaser.Scene {
+  constructor() { super('Achievements'); }
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 14, -1);
 
-      if (t.type === 'bulb'){
-        const halo = this.add.circle(0, 0, cell*0.32, 0xffb545, 0)
-          .setBlendMode(Phaser.BlendModes.ADD);
-        cont.add(halo);
-        t._halo = halo;
+    const back = this.add.text(20, 45, '←', {
+      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.scene.start('Menu'));
 
-        const bg = this.add.graphics();
-        drawBulbGfx(bg, cell, false);
-        cont.add(bg);
-        t._bulbG = bg;
-      } else if (t.type === 'source'){
-        const sg = this.add.graphics();
-        drawSourceGfx(sg, cell);
-        cont.add(sg);
+    this.add.text(W / 2, 45, 'ДОСТИЖЕНИЯ', Core.TextStyles.heading(30)).setOrigin(0.5);
+
+    const count = Core.Achievements.count();
+    const total = Core.Achievements.list.length;
+    this.add.text(W / 2, 92, count + ' / ' + total, Core.TextStyles.gold(22)).setOrigin(0.5);
+
+    const barW = W - 120, barH = 12, barY = 118;
+    this.add.rectangle(W / 2, barY, barW, barH, 0x1a1a2e).setOrigin(0.5).setStrokeStyle(2, 0x444455);
+    if (count > 0) {
+      const fillW = (barW - 4) * (count / total);
+      const fill = this.add.rectangle(W / 2 - barW / 2 + 2, barY, fillW, barH - 4, 0xffd93d).setOrigin(0, 0.5);
+      this.tweens.add({ targets: fill, scaleX: 1.02, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    }
+
+    const listY = 160;
+    const rowH = 95;
+    const rowGap = 12;
+    const rowW = W - 60;
+    const container = this.add.container(0, listY);
+
+    const list = Core.Achievements.list;
+    const saved = Core.SDK.get('achievements', {});
+
+    list.forEach((ach, i) => {
+      const unlocked = !!saved[ach.id];
+      const y = i * (rowH + rowGap);
+      const c = this.add.container(W / 2, y);
+
+      const bgColor = unlocked ? 0x2e2a1a : 0x1f1f30;
+      const strokeColor = unlocked ? 0xffd93d : 0x333344;
+      const rowBg = this.add.rectangle(0, 0, rowW, rowH, bgColor).setOrigin(0.5).setStrokeStyle(2, strokeColor, unlocked ? 1 : 0.5);
+      c.add(rowBg);
+
+      const iconBg = this.add.circle(-rowW / 2 + 60, 0, 36, unlocked ? 0x3a2e10 : 0x252535)
+        .setStrokeStyle(2, strokeColor, unlocked ? 0.9 : 0.4);
+      c.add(iconBg);
+      const icon = this.add.text(-rowW / 2 + 60, 0, unlocked ? ach.icon : '🔒', {
+        fontSize: unlocked ? '40px' : '28px'
+      }).setOrigin(0.5);
+      if (!unlocked) icon.setAlpha(0.4);
+      c.add(icon);
+
+      c.add(this.add.text(-rowW / 2 + 120, -18, ach.name, {
+        fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
+        color: unlocked ? '#ffd93d' : '#666677'
+      }).setOrigin(0, 0.5));
+
+      c.add(this.add.text(-rowW / 2 + 120, 12, ach.desc, {
+        fontFamily: Core.FONT, fontSize: '14px', fontStyle: '700',
+        color: unlocked ? '#cccccc' : '#555566',
+        wordWrap: { width: rowW - 200 }
+      }).setOrigin(0, 0.5));
+
+      if (unlocked) {
+        c.add(this.add.text(rowW / 2 - 30, 0, '✓', {
+          fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#4ecca3'
+        }).setOrigin(0.5));
+      } else {
+        c.add(this.add.text(rowW / 2 - 30, 0, '—', {
+          fontFamily: Core.FONT, fontSize: '24px', fontStyle: '900', color: '#444455'
+        }).setOrigin(0.5));
+      }
+
+      if (unlocked) {
         this.tweens.add({
-          targets: sg, alpha: { from: 1, to: 0.65 },
-          duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+          targets: icon, scale: 1.1, duration: 1400 + i * 100, yoyo: true, repeat: -1, ease: 'Sine.InOut'
         });
       }
 
-      cont.setInteractive(new Phaser.Geom.Rectangle(-cell/2, -cell/2, cell, cell),
-                          Phaser.Geom.Rectangle.Contains);
-      cont.on('pointerdown', () => this.onTileTap(t));
+      container.add(c);
+    });
 
-      const d = Math.abs(t.x - (size-1)/2) + Math.abs(t.y - (size-1)/2);
-      cont.setScale(0.001);
-      this.tweens.add({
-        targets: cont, scale: 1, duration: 320,
-        delay: 220 + d*45, ease: 'Back.easeOut'
+    const totalH = list.length * (rowH + rowGap);
+    const viewH = H - listY - 60;
+    if (totalH > viewH) {
+      const maskShape = this.make.graphics({ x: 0, y: listY });
+      maskShape.fillRect(0, 0, W, viewH);
+      container.setMask(maskShape.createGeometryMask());
+
+      let dragging = false, startY = 0, startScrollY = 0;
+      const minY = listY - (totalH - viewH);
+      const maxY = listY;
+      container.y = listY;
+
+      this.input.on('pointerdown', (p) => {
+        if (p.y > listY - 20) { dragging = true; startY = p.y; startScrollY = container.y; }
+      });
+      this.input.on('pointerup', () => { dragging = false; });
+      this.input.on('pointermove', (p) => {
+        if (!dragging) return;
+        let ny = startScrollY + (p.y - startY);
+        ny = Math.max(minY, Math.min(maxY, ny));
+        container.y = ny;
       });
 
-      t._cont = cont;
-      this.tileMap[t.x+','+t.y] = t;
-      this.tiles.push(t);
-    }
-
-    this.lightGfx = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-  }
-
-  buildHUD(){
-    /* Кнопка «‹» — назад в меню игры */
-    const back = this.add.text(70, 96, '‹', {
-      fontFamily: FONT, fontSize: '52px', color: '#7d97c4'
-    }).setOrigin(0.5).setInteractive({ useHandCursor:true });
-    back.on('pointerdown', () => { Sound.ui(); this.scene.start('menu'); });
-
-    /* Кнопка «← Сайт» — прямой выход на портал *//* Кнопка «← Сайт» — круглая стрелка, выход на портал */
-makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
-
-    this.add.text(W/2, 96, L('level') + ' ' + this.levelNum, {
-      fontFamily: FONT, fontSize: '40px', color: '#e6efff', fontStyle: 'bold'
-    }).setOrigin(0.5);
-
-    this.movesText = this.add.text(W/2, 152, '', {
-      fontFamily: FONT, fontSize: '25px', color: '#6f89b8'
-    }).setOrigin(0.5);
-    this.refreshMovesText();
-
-    this.bulbsText = this.add.text(W/2, 200, '', {
-      fontFamily: FONT, fontSize: '24px', color: '#8a6a3a'
-    }).setOrigin(0.5);
-
-    makeButton(this, 240, 1175, 200, 86, L('restart'), 0x1d2c4d,
-      () => this.scene.restart({ level: this.levelNum }), 28);
-
-    this.hintBtn = makeButton(this, 482, 1175, 230, 86,
-      L('hint') + ' ×' + this.hintUses, 0x2b4a7a,
-      () => Ads.rewarded(() => this.doHint()), 24);
-  }
-
-  refreshMovesText(){
-    const d = this.levelData;
-    this.movesText.setText(
-      L('moves') + ': ' + this.moves + ' / ' + d.moveLimit +
-      '   ·   ' + L('min') + ': ' + d.par
-    );
-    const danger = this.movesLeft <= 3 && this.movesLeft > 0;
-    this.movesText.setColor(danger ? '#ff7070' : '#6f89b8');
-
-    if (danger){
-      if (!this._dangerPulse){
-        this._dangerPulse = true;
-        this.tweens.add({
-          targets: this.movesText, scale: { from: 1, to: 1.06 },
-          duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-        });
-      }
-      if (this._lastDangerLevel !== this.movesLeft){
-        this._lastDangerLevel = this.movesLeft;
-        Sound.warn();
-      }
-    } else {
-      if (this._dangerPulse){
-        this._dangerPulse = false;
-        this.tweens.killTweensOf(this.movesText);
-        this.movesText.setScale(1);
-      }
-    }
-  }
-
-  ripple(t){
-    const px = t._cont.x, py = t._cont.y, c = this.cell;
-
-    const ring = this.add.circle(px, py, c*0.16)
-      .setStrokeStyle(3, 0xffd98a, 0.9)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({
-      targets: ring, scale: 2.6, alpha: 0,
-      duration: 430, ease: 'Cubic.easeOut', onComplete: () => ring.destroy()
-    });
-
-    for (let i=0; i<7; i++){
-      const a = Math.random()*Math.PI*2;
-      const dist = c*(0.25 + Math.random()*0.38);
-      const s = this.add.circle(
-        px + Math.cos(a)*c*0.12,
-        py + Math.sin(a)*c*0.12,
-        c*0.035, 0xfff0bb
-      ).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.95);
-
-      this.tweens.add({
-        targets: s,
-        x: px + Math.cos(a)*dist,
-        y: py + Math.sin(a)*dist,
-        alpha: 0, scale: 0.2,
-        duration: 320 + Math.random()*240,
-        ease: 'Cubic.easeOut',
-        onComplete: () => s.destroy()
+      this.input.on('wheel', (p, objs, dx, dy) => {
+        let ny = container.y - dy * 0.5;
+        ny = Math.max(minY, Math.min(maxY, ny));
+        container.y = ny;
       });
+
+      const hint = this.add.text(W / 2, H - 30, '↑ листай ↓', Core.TextStyles.soft(12, '#555555')).setOrigin(0.5);
+      this.tweens.add({ targets: hint, alpha: 0.3, duration: 1200, yoyo: true, repeat: -1 });
     }
+
+    this.cameras.main.fadeIn(250, 0, 0, 0);
   }
+}
 
-  onTileTap(t){
-    if (this.solved || this.failed) return;
-    Sound.init();
-
-    if (!t.rotatable){
-      Sound.locked();
-      this.tweens.add({
-        targets: t._cont, x: t._cont.x + 5,
-        duration: 45, yoyo: true, repeat: 1, ease: 'Sine.easeInOut'
-      });
-      return;
-    }
-
-    if (this.movesLeft <= 0){
-      Sound.locked();
-      return;
-    }
-
-    Sound.tap();
-    this.ripple(t);
-
-    t.rot = (t.rot + 1) % 4;
-    t._vis += 90;
-    this.moves++;
-    this.movesLeft--;
-    this.refreshMovesText();
-
-    this.tweens.killTweensOf(t._cont);
-    this.tweens.add({
-      targets: t._cont,
-      angle: t._vis,
-      duration: 190,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.updateLight();
-        this.checkFail();
-      }
-    });
-    this.tweens.add({
-      targets: t._cont,
-      scale: { from: 1, to: 0.92 },
-      duration: 85, yoyo: true, ease: 'Sine.easeOut'
-    });
+class LevelMapScene extends Phaser.Scene {
+  constructor() { super('LevelMap'); }
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    this.currentPage = Math.floor((Core.SDK.get('level', 1) - 1) / 20);
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 14, -1);
+    const back = this.add.text(20, 45, '←', {
+      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.scene.start('Menu'));
+    this.add.text(W / 2, 45, 'УРОВНИ', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 20, iconSize: 22, anchor: 'right' });
+    this.gridContainer = this.add.container(0, 0);
+    this.pageText = this.add.text(W / 2, H - 60, '', Core.TextStyles.soft(16, '#cccccc')).setOrigin(0.5);
+    this.prevBtn = this.add.rectangle(60, H - 60, 60, 50, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
+    this.add.text(60, H - 60, '‹', { fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5);
+    this.prevBtn.setInteractive({ useHandCursor: true });
+    this.prevBtn.on('pointerdown', () => { if (this.currentPage > 0) { this.currentPage--; this.renderPage(); } });
+    this.nextBtn = this.add.rectangle(W - 60, H - 60, 60, 50, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
+    this.add.text(W - 60, H - 60, '›', { fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5);
+    this.nextBtn.setInteractive({ useHandCursor: true });
+    this.nextBtn.on('pointerdown', () => { this.currentPage++; this.renderPage(); });
+    this.renderPage();
+    this.cameras.main.fadeIn(250, 0, 0, 0);
   }
-
-  doHint(){
-    if (this.solved || this.failed) return;
-    if (this.hintUses <= 0){
-      Sound.locked();
-      return;
-    }
-    this.hintUses--;
-    this.hintBtn.labelText.setText(L('hint') + ' ×' + this.hintUses);
-
-    const t = this.levelData.tiles.find(
-      x => x.rotatable && !x._decoy && !x.correctRots.includes(x.rot)
-    );
-    if (!t) return;
-
-    Sound.hint();
-
-    let bestR = t.rot, bestD = 9;
-    for (const cr of t.correctRots){
-      const d = (cr - t.rot + 4) % 4;
-      if (d < bestD){ bestD = d; bestR = cr; }
-    }
-
-    const ring = this.add.circle(t._cont.x, t._cont.y, this.cell*0.55)
-      .setStrokeStyle(3, 0xffd36b, 1)
-      .setAlpha(0.9)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({ targets: ring, alpha: 0, scale: 1.5,
-      duration: 700, onComplete: () => ring.destroy() });
-
-    this.tweens.killTweensOf(t._cont);
-    t.rot = bestR;
-    t._vis += bestD * 90;
-    this.tweens.add({
-      targets: t._cont,
-      angle: t._vis,
-      duration: 130*bestD + 60,
-      ease: 'Cubic.easeInOut',
-      onComplete: () => this.updateLight()
-    });
-  }
-
-  checkFail(){
-    if (this.solved || this.failed) return;
-    if (this.movesLeft <= 0){
-      this.failed = true;
-      this.time.delayedCall(380, () => this.showFail());
-    }
-  }
-
-  updateLight(){
-    const size = this.levelData.size;
-    const cell = this.cell, bx = this.boardX, by = this.boardY;
-
-    const src = this.levelData.tiles.find(t => t.type === 'source');
-    const srcKey = src.x+','+src.y;
-
-    const lit = new Set([srcKey]);
-    const visited = new Set([srcKey]);
-    const segs = [];
-    const q = [];
-
-    const sm = rotMask(src.canonical, src.rot);
-    for (let d=0; d<4; d++) if (sm & bit(d)) q.push({ x:src.x, y:src.y, d });
-
-    while (q.length){
-      const s = q.pop();
-      const nx = s.x + DIRS[s.d].dx, ny = s.y + DIRS[s.d].dy;
-      if (nx<0 || ny<0 || nx>=size || ny>=size) continue;
-
-      const nt = this.tileMap[nx+','+ny];
-      if (!nt) continue;
-
-      const nm = rotMask(nt.canonical, nt.rot);
-      if (!(nm & bit(opp(s.d)))) continue;
-
-      segs.push(s);
-
-      const k = nx+','+ny;
-      if (visited.has(k)) continue;
-      visited.add(k);
-      lit.add(k);
-
-      for (let d2=0; d2<4; d2++){
-        if (d2 === opp(s.d)) continue;
-        if (nm & bit(d2)) q.push({ x:nx, y:ny, d:d2 });
-      }
-    }
-
-    const gfx = this.lightGfx;
-    gfx.clear();
-
-    const passes = [
-      { w:0.30, c:0xff9d2e, a:0.06 },
-      { w:0.20, c:0xffb545, a:0.12 },
-      { w:0.12, c:0xffd98a, a:0.28 },
-      { w:0.055, c:0xfff8e0, a:0.95 }
-    ];
-    for (const p of passes){
-      gfx.lineStyle(cell*p.w, p.c, p.a);
-      gfx.fillStyle(p.c, p.a);
-      for (const s of segs){
-        const x1 = bx + (s.x+0.5)*cell, y1 = by + (s.y+0.5)*cell;
-        const x2 = x1 + DIRS[s.d].dx*cell, y2 = y1 + DIRS[s.d].dy*cell;
-        gfx.beginPath(); gfx.moveTo(x1,y1); gfx.lineTo(x2,y2); gfx.strokePath();
-        gfx.fillCircle(x2, y2, cell*p.w*0.5);
-      }
-    }
-
-    for (const t of this.levelData.tiles){
-      const isLit = lit.has(t.x+','+t.y);
-      if (isLit !== t._litAny){
-        t._litAny = isLit;
-        if (t._glow){
-          this.tweens.killTweensOf(t._glow);
-          this.tweens.add({ targets: t._glow, alpha: isLit ? 0.15 : 0, duration: 220 });
-        }
-      }
-    }
-
-    let litCount = 0, total = 0;
-    for (const t of this.levelData.tiles){
-      if (t.type !== 'bulb') continue;
-      total++;
-      const isLit = lit.has(t.x+','+t.y);
-      if (isLit) litCount++;
-      if (isLit !== t._lit){
-        t._lit = isLit;
-        drawBulbGfx(t._bulbG, cell, isLit);
-
-        if (t._halo){
-          this.tweens.killTweensOf(t._halo);
-          if (isLit){
-            t._halo.setAlpha(0.30).setScale(1);
-            this.tweens.add({
-              targets: t._halo, alpha: 0.10, scale: 1.18,
-              duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-            });
-            this.tweens.add({
-              targets: t._cont, scale: { from: 1.09, to: 1 },
-              duration: 340, ease: 'Back.easeOut'
-            });
-          } else {
-            t._halo.setAlpha(0).setScale(1);
+  renderPage() {
+    this.gridContainer.removeAll(true);
+    const W = this.scale.width;
+    const currentLevel = Core.SDK.get('level', 1);
+    const bestStars = Core.SDK.get('bestStars', {});
+    const perPage = 20;
+    const cols = 4, rows = 5;
+    const startLevel = this.currentPage * perPage + 1;
+    const cellW = 150, cellH = 130, gapX = 15, gapY = 15;
+    const totalW = cols * cellW + (cols - 1) * gapX;
+    const startX = (W - totalW) / 2 + cellW / 2;
+    const startY = 160;
+    for (let i = 0; i < perPage; i++) {
+      const lvl = startLevel + i;
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = startX + col * (cellW + gapX);
+      const y = startY + row * (cellH + gapY);
+      const locked = lvl > currentLevel;
+      const done = lvl < currentLevel;
+      const isCurrent = lvl === currentLevel;
+      const stars = bestStars[lvl] || 0;
+      const cell = this.add.container(x, y);
+      let bgColor = 0x2a2a4a, strokeColor = 0x444455, strokeAlpha = 0.5;
+      if (isCurrent) { strokeColor = 0x4ecca3; strokeAlpha = 1; }
+      else if (done) { strokeColor = 0xffd93d; strokeAlpha = 0.7; }
+      const bg = this.add.rectangle(0, 0, cellW, cellH, bgColor).setOrigin(0.5).setStrokeStyle(isCurrent ? 3 : 2, strokeColor, strokeAlpha);
+      cell.add(bg);
+      if (isCurrent) this.tweens.add({ targets: bg, alpha: 0.7, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      if (locked) {
+        cell.add(this.add.text(0, -8, '🔒', { fontSize: '32px' }).setOrigin(0.5).setAlpha(0.4));
+      } else {
+        cell.add(this.add.text(0, -18, String(lvl), {
+          fontFamily: Core.FONT, fontSize: '36px', fontStyle: '900',
+          color: isCurrent ? '#4ecca3' : (done ? '#ffd93d' : '#ffffff'),
+          stroke: '#000000', strokeThickness: 2
+        }).setOrigin(0.5));
+        if (done || isCurrent) {
+          for (let s = 0; s < 3; s++) {
+            const on = s < stars;
+            cell.add(this.add.text(-30 + s * 30, 30, '★', {
+              fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
+              color: on ? '#ffd93d' : '#444455'
+            }).setOrigin(0.5));
           }
         }
-
-        if (isLit){ this.bloom(t); Sound.lit(); }
+        bg.setInteractive({ useHandCursor: true });
+        bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
+        bg.on('pointerout',  () => bg.setFillStyle(bgColor));
+        bg.on('pointerdown', () => { Core.Audio.select(); this.scene.start('BallSort', { level: lvl, mode: 'level' }); });
       }
+      this.gridContainer.add(cell);
     }
-
-    if (this.bulbsText){
-      this.bulbsText.setText(L('buds') + ': ' + litCount + ' / ' + total);
-      this.bulbsText.setColor(litCount === total ? '#ffcf6b' : '#7a6647');
-    }
-
-    if (litCount === total && total > 0 && !this.solved && !this.failed){
-      this.solved = true;
-      this.time.delayedCall(520, () => this.showWin());
-    }
-  }
-
-  bloom(t){
-    const px = this.boardX + (t.x+0.5)*this.cell;
-    const py = this.boardY + (t.y+0.5)*this.cell;
-    for (let i=0; i<12; i++){
-      const a    = Math.random()*Math.PI*2;
-      const dist = this.cell*(0.4 + Math.random()*0.7);
-      const c = this.add.circle(px, py, this.cell*0.05, 0xffe9b0)
-        .setAlpha(0.9)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      this.tweens.add({
-        targets: c,
-        x: px + Math.cos(a)*dist,
-        y: py + Math.sin(a)*dist,
-        alpha: 0,
-        scale: 0.2,
-        duration: 500 + Math.random()*400,
-        ease: 'Cubic.easeOut',
-        onComplete: () => c.destroy()
-      });
-    }
-    const flash = this.add.circle(px, py, this.cell*0.5, 0xfff3c4, 0.5)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({
-      targets: flash, alpha: 0, scale: 2.2,
-      duration: 500, ease: 'Cubic.easeOut',
-      onComplete: () => flash.destroy()
-    });
-  }
-
-  confetti(){
-    const colors = [0xffcf6b, 0xffb545, 0x7fd4ff, 0xa9e07a, 0xff8fb0, 0xfff0bb];
-    for (let i=0; i<80; i++){
-      const w = 6 + Math.random()*8, h = 4 + Math.random()*5;
-      const c = this.add.rectangle(
-        Math.random()*W, -20 - Math.random()*260,
-        w, h, colors[i % colors.length]
-      ).setDepth(999).setAlpha(0.95);
-
-      this.tweens.add({
-        targets: c,
-        y: H + 60,
-        x: c.x + (Math.random()-0.5)*240,
-        angle: 360 * (Math.random() < 0.5 ? 1 : -1),
-        alpha: { from: 0.95, to: 0.6 },
-        duration: 1800 + Math.random()*1700,
-        delay: Math.random()*650,
-        ease: 'Cubic.easeIn',
-        onComplete: () => c.destroy()
-      });
-    }
-  }
-
-  showWin(){
-    const par = this.levelData.par;
-
-    let rank, stars;
-    if      (this.moves <= par)                              { rank = 'S'; stars = 3; }
-    else if (this.moves <= par + Math.ceil(par * 0.1))       { rank = 'A'; stars = 2; }
-    else if (this.moves <= par + Math.ceil(par * 0.25))      { rank = 'B'; stars = 1; }
-    else                                                     { rank = 'C'; stars = 1; }
-
-    saveWin(this.levelNum, stars, this.moves, rank);
-    Ads.interstitial();
-
-    Sound.win();
-    this.cameras.main.flash(260, 255, 220, 150);
-    this.cameras.main.shake(320, 0.006);
-    this.confetti();
-
-    const overlay = this.add.container(0, 0).setDepth(1000);
-
-    const dim = this.add.graphics();
-    dim.fillStyle(0x03060d, 0.78);
-    dim.fillRect(0, 0, W, H);
-    overlay.add(dim);
-
-    const panel = this.add.graphics();
-    panel.fillStyle(0x14203a, 0.98);
-    panel.fillRoundedRect(W/2-260, 380, 520, 540, 32);
-    panel.lineStyle(3, 0x3b5a92, 0.9);
-    panel.strokeRoundedRect(W/2-260, 380, 520, 540, 32);
-    overlay.add(panel);
-
-    overlay.add(this.add.text(W/2, 435, L('levelComplete'), {
-      fontFamily: FONT, fontSize: '36px', color: '#eaf2ff', fontStyle: 'bold'
-    }).setOrigin(0.5));
-
-    const rankColor = { S: '#ffd54f', A: '#7fd4ff', B: '#a9e07a', C: '#8899aa' };
-    const rankLabel = {
-      S: L('rankS'), A: L('rankA'), B: L('rankB'), C: L('rankC')
-    };
-    const rankText = this.add.text(W/2, 525, rank, {
-      fontFamily: FONT, fontSize: '72px',
-      color: rankColor[rank], fontStyle: 'bold'
-    }).setOrigin(0.5);
-    rankText.setScale(0);
-    overlay.add(rankText);
-    this.tweens.add({
-      targets: rankText, scale: 1,
-      duration: 420, delay: 150, ease: 'Back.easeOut'
-    });
-    overlay.add(this.add.text(W/2, 585, rankLabel[rank], {
-      fontFamily: FONT, fontSize: '20px', color: rankColor[rank]
-    }).setOrigin(0.5));
-
-    for (let i=0; i<3; i++){
-      const sx = W/2 + (i-1)*70, sy = 665;
-      const star = this.add.text(sx, sy, '★', {
-        fontFamily: FONT, fontSize: '60px',
-        color: i < stars ? '#ffcf6b' : '#2a3a56'
-      }).setOrigin(0.5);
-      overlay.add(star);
-      if (i < stars){
-        star.setScale(0);
-        this.tweens.add({
-          targets: star, scale: 1,
-          duration: 380, delay: 320 + i*160, ease: 'Back.easeOut'
-        });
-      }
-    }
-
-    overlay.add(this.add.text(W/2, 745,
-      L('movesLower') + ': ' + this.moves + '   (' + L('minimum') + ' ' + par + ')', {
-      fontFamily: FONT, fontSize: '24px', color: '#7d97c4'
-    }).setOrigin(0.5));
-
-    const best = loadSave().best[this.levelNum];
-    if (best && best < this.moves){
-      overlay.add(this.add.text(W/2, 780,
-        L('best') + ': ' + best, {
-        fontFamily: FONT, fontSize: '20px', color: '#5f7aa8'
-      }).setOrigin(0.5));
-    }
-
-    const isLast = this.levelNum >= LEVELS_TOTAL;
-    const nextLabel  = isLast ? L('toMenu') : L('next');
-    const nextAction = isLast
-      ? () => this.scene.start('menu')
-      : () => this.scene.start('game', { level: this.levelNum + 1 });
-
-    overlay.add(makeButton(this, W/2, 830, 300, 86, nextLabel, 0x2f5fa8, nextAction, 32));
-    overlay.add(makeButton(this, W/2, 920, 260, 70, L('toLevels'), 0x1d2c4d, () => {
-      this.scene.start('menu');
-    }, 24));
-
-    overlay.setAlpha(0);
-    this.tweens.add({ targets: overlay, alpha: 1, duration: 250 });
-  }
-
-  showFail(){
-    Sound.fail();
-    this.cameras.main.shake(300, 0.012);
-    this.cameras.main.flash(300, 120, 30, 40);
-
-    for (const t of this.levelData.tiles){
-      if (t._glow){
-        this.tweens.killTweensOf(t._glow);
-        this.tweens.add({ targets: t._glow, alpha: 0, duration: 300 });
-      }
-      if (t._halo) {
-        this.tweens.killTweensOf(t._halo);
-        this.tweens.add({ targets: t._halo, alpha: 0, duration: 300 });
-      }
-      if (t._cont){
-        this.tweens.add({ targets: t._cont, alpha: 0.55, duration: 300 });
-      }
-    }
-
-    const overlay = this.add.container(0, 0).setDepth(1000);
-
-    const dim = this.add.graphics();
-    dim.fillStyle(0x1a0508, 0.82);
-    dim.fillRect(0, 0, W, H);
-    overlay.add(dim);
-
-    const panel = this.add.graphics();
-    panel.fillStyle(0x1a0f12, 0.98);
-    panel.fillRoundedRect(W/2-260, 400, 520, 500, 32);
-    panel.lineStyle(3, 0x7a2a3a, 0.9);
-    panel.strokeRoundedRect(W/2-260, 400, 520, 500, 32);
-    overlay.add(panel);
-
-    overlay.add(this.add.text(W/2, 470, L('withered'), {
-      fontFamily: FONT, fontSize: '46px', color: '#ff7a8a', fontStyle: 'bold'
-    }).setOrigin(0.5));
-
-    overlay.add(this.add.text(W/2, 540, L('outOfMoves'), {
-      fontFamily: FONT, fontSize: '26px', color: '#b0707e'
-    }).setOrigin(0.5));
-
-    overlay.add(this.add.text(W/2, 590,
-      L('movesLower') + ': ' + this.moves + ' / ' + this.levelData.moveLimit, {
-      fontFamily: FONT, fontSize: '22px', color: '#8a6070'
-    }).setOrigin(0.5));
-
-    if (!this.reviveUsed){
-      const reviveBtn = makeButton(this, W/2, 690, 380, 88,
-        '▶ ' + L('adReward'), 0x6a3a48,
-        () => {
-          Ads.rewarded(() => {
-            this.reviveUsed = true;
-            this.failed = false;
-            this.movesLeft += 5;
-            this.refreshMovesText();
-            Sound.ui();
-            for (const t of this.levelData.tiles){
-              if (t._cont) this.tweens.add({ targets: t._cont, alpha: 1, duration: 200 });
-            }
-            this.updateLight();
-            overlay.destroy();
-          });
-        }, 24);
-      overlay.add(reviveBtn);
-    }
-
-    overlay.add(makeButton(this, W/2, 795, 300, 86, L('restart'), 0x2f5fa8, () => {
-      this.scene.restart({ level: this.levelNum });
-    }, 30));
-
-    overlay.add(makeButton(this, W/2, 885, 260, 70, L('toLevels'), 0x1d2c4d, () => {
-      this.scene.start('menu');
-    }, 24));
-
-    overlay.setAlpha(0);
-    this.tweens.add({ targets: overlay, alpha: 1, duration: 300 });
+    const totalPages = Math.max(1, Math.ceil(currentLevel / perPage));
+    this.pageText.setText('Страница ' + (this.currentPage + 1) + ' / ' + totalPages);
+    this.prevBtn.setAlpha(this.currentPage === 0 ? 0.3 : 1);
+    this.nextBtn.setAlpha(this.currentPage >= totalPages - 1 ? 0.3 : 1);
   }
 }
 
-/* ============================================================
-   BOOT
-   ============================================================ */
-const config = {
-  type: Phaser.AUTO,
-  width: W,
-  height: H,
-  backgroundColor: '#070a12',
-  parent: document.body,
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [MenuScene, GameScene]
+class ShopScene extends Phaser.Scene {
+  constructor() { super('Shop'); }
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 12, -1);
+    const back = this.add.text(20, 45, '←', {
+      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.scene.start('Menu'));
+    this.add.text(W / 2, 45, 'МАГАЗИН', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 22, iconSize: 24, anchor: 'right' });
+    this.add.text(W / 2, 130, '— ПОДСКАЗКИ —', Core.TextStyles.soft(16, '#7fd4c1')).setOrigin(0.5);
+    this.createItemCard(W / 2 - 100, 220, '💡', '+1 подсказка', 30, () => this.buyHint(1, 30));
+    this.createItemCard(W / 2 + 100, 220, '💡', '+3 подсказки', 80, () => this.buyHint(3, 80), 'выгодно');
+    
+    const tabY = 345;
+    this.tubeTab = this.makeTab(W / 2 - 90, tabY, 'ТРУБЫ', () => this.setSkinTab('tubes'));
+    this.ballTab = this.makeTab(W / 2 + 90, tabY, 'ШАРЫ',  () => this.setSkinTab('balls'));
+    this.skinTab = null;
+    this.skinContainer = this.add.container(0, 0);
+    this.setSkinTab('tubes');
+
+    this.add.text(W / 2, H - 50, 'В инвентаре подсказок: ' + Core.SDK.get('hintsOwned', 3), Core.TextStyles.soft(14, '#888888')).setOrigin(0.5);
+    this.cameras.main.fadeIn(250, 0, 0, 0);
+  }
+
+  makeTab(x, y, text, onClick) {
+    const bg = this.add.rectangle(x, y, 160, 48, 0x2a2a4a).setStrokeStyle(2, 0x4ecca3, 0.5);
+    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#888888' }).setOrigin(0.5);
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerdown', onClick);
+    return { bg, lbl };
+  }
+  setSkinTab(tab) {
+    if (this.skinTab === tab) return;
+    this.skinTab = tab;
+    const on = 0x4ecca3, off = 0x2a2a4a;
+    this.tubeTab.bg.setFillStyle(tab === 'tubes' ? on : off);
+    this.tubeTab.lbl.setColor(tab === 'tubes' ? '#0f3460' : '#888888');
+    this.ballTab.bg.setFillStyle(tab === 'balls' ? on : off);
+    this.ballTab.lbl.setColor(tab === 'balls' ? '#0f3460' : '#888888');
+    this.renderSkinTab();
+  }
+  renderSkinTab() {
+    this.skinContainer.removeAll(true);
+    const startY = 410, rowH = 130;
+    if (this.skinTab === 'tubes') {
+      const owned = Core.SDK.get('ownedSkins', ['classic']);
+      const current = Core.SDK.get('currentSkin', 'classic');
+      Object.keys(Core.Skins.tubes).forEach((key, idx) => {
+        this.createSkinRow(key, Core.Skins.tubes[key], owned, current, startY + idx * rowH, rowH - 15);
+      });
+    } else {
+      const owned = Core.SDK.get('ownedBallSkins', ['classic']);
+      const current = Core.SDK.get('currentBallSkin', 'classic');
+      Object.keys(Core.Skins.balls).forEach((key, idx) => {
+        this.createBallSkinRow(key, Core.Skins.balls[key], owned, current, startY + idx * rowH, rowH - 15);
+      });
+    }
+  }
+  createBallSkinRow(key, skin, owned, current, y, height) {
+    const W = this.scale.width;
+    const c = this.add.container(W / 2, y);
+    const isOwned = owned.indexOf(key) >= 0;
+    const isCurrent = current === key;
+    const bg = this.add.rectangle(0, 0, W - 60, height, 0x2a2a4a).setOrigin(0.5)
+      .setStrokeStyle(2, isCurrent ? 0x4ecca3 : 0x444455, isCurrent ? 1 : 0.5);
+    c.add(bg);
+    const preview = Core.renderBall(this, 34, 0x3498db, key);
+    preview.setPosition(-W / 2 + 80, 0);
+    c.add(preview);
+    c.add(this.add.text(-W / 2 + 140, -15, skin.name, {
+      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5));
+    c.add(this.add.text(-W / 2 + 140, 15, isOwned ? 'Куплено' : 'Не куплено', Core.TextStyles.soft(12, '#888888')).setOrigin(0, 0.5));
+    const btnBg = this.add.rectangle(W / 2 - 100, 0, 160, 54, isCurrent ? 0x1f3a2f : (isOwned ? 0x2a2a4a : 0xffd93d)).setOrigin(0.5)
+      .setStrokeStyle(2, isCurrent || isOwned ? 0x4ecca3 : 0xb8860b, 0.8);
+    c.add(btnBg);
+    if (isCurrent) {
+      c.add(this.add.text(W / 2 - 100, 0, '✓ ВЫБРАН', { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: '#4ecca3' }).setOrigin(0.5));
+    } else if (isOwned) {
+      c.add(this.add.text(W / 2 - 100, 0, 'Выбрать', { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerdown', () => this.selectBallSkin(key));
+    } else {
+      c.add(Core.coinLabel(this, W / 2 - 100, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerdown', () => this.buyBallSkin(key, skin.price));
+    }
+    this.skinContainer.add(c);
+  }
+  async buyBallSkin(key, price) {
+    const coins = Core.SDK.get('coins', 0);
+    if (coins < price) { this.showToast('Не хватает монет'); return; }
+    const owned = Core.SDK.get('ownedBallSkins', ['classic']).slice();
+    owned.push(key);
+    await Core.SDK.save({ coins: coins - price, ownedBallSkins: owned, currentBallSkin: key });
+    Core.Audio.buy(); this.showToast('Куплено: ' + Core.Skins.balls[key].name);
+    if (owned.length >= 4 && Core.SDK.get('ownedSkins', []).length >= 4) {
+      if (Core.Achievements.unlock('all_skins')) Core.showAchievement(this, 'all_skins');
+    }
+    this.scene.restart();
+  }
+  async selectBallSkin(key) {
+    await Core.SDK.save({ currentBallSkin: key });
+    Core.Audio.select();
+    this.scene.restart();
+  }
+
+  createItemCard(x, y, icon, label, price, onClick, badge) {
+    const c = this.add.container(x, y);
+    const bg = this.add.rectangle(0, 0, 170, 130, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.7);
+    c.add(bg);
+    c.add(this.add.text(0, -35, icon, { fontSize: '36px' }).setOrigin(0.5));
+    c.add(this.add.text(0, 5, label, {
+      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#ffffff',
+      align: 'center', wordWrap: { width: 160 }
+    }).setOrigin(0.5));
+    c.add(Core.coinLabel(this, 0, 42, price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
+    if (badge) {
+      const b = this.add.rectangle(60, -55, 70, 22, 0xe74c3c).setOrigin(0.5);
+      c.add(b);
+      c.add(this.add.text(60, -55, badge, { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
+    }
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
+    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
+    bg.on('pointerdown', () => { this.tweens.add({ targets: c, scale: 0.95, duration: 80, yoyo: true }); onClick(); });
+  }
+  createSkinRow(key, skin, owned, current, y, height) {
+    const W = this.scale.width;
+    const c = this.add.container(W / 2, y);
+    const isOwned = owned.indexOf(key) >= 0;
+    const isCurrent = current === key;
+    const bg = this.add.rectangle(0, 0, W - 60, height, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, isCurrent ? 0x4ecca3 : 0x444455, isCurrent ? 1 : 0.5);
+    c.add(bg);
+    const g = this.add.graphics();
+    const tx = -W / 2 + 80, ty = 0, tw = 40, th = 90, r = 10;
+    const x0 = tx - tw / 2, y0 = ty - th / 2;
+    g.fillStyle(skin.fill, skin.fillAlpha);
+    g.lineStyle(skin.lineWidth, skin.stroke, skin.strokeAlpha);
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x0, y0 + th - r);
+    g.arc(x0 + r, y0 + th - r, r, Math.PI, Math.PI / 2, true);
+    g.lineTo(x0 + tw - r, y0 + th);
+    g.arc(x0 + tw - r, y0 + th - r, r, Math.PI / 2, 0, true);
+    g.lineTo(x0 + tw, y0);
+    g.closePath();
+    g.strokePath(); g.fillPath();
+    c.add(g);
+    c.add(this.add.text(-W / 2 + 140, -15, skin.name, {
+      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ffffff'
+    }).setOrigin(0, 0.5));
+    c.add(this.add.text(-W / 2 + 140, 15, isOwned ? 'Куплено' : 'Не куплено', Core.TextStyles.soft(12, '#888888')).setOrigin(0, 0.5));
+    let statusText = null, statusColor = '#ffd93d', clickFn = null;
+    if (isCurrent) { statusText = '✓ ВЫБРАН'; statusColor = '#4ecca3'; }
+    else if (isOwned) { statusText = 'Выбрать'; statusColor = '#ffffff'; clickFn = () => this.selectSkin(key); }
+    else { clickFn = () => this.buySkin(key, skin.price); }
+    const btnBg = this.add.rectangle(W / 2 - 100, 0, 160, 54, isCurrent ? 0x1f3a2f : (isOwned ? 0x2a2a4a : 0xffd93d)).setOrigin(0.5);
+    btnBg.setStrokeStyle(2, isCurrent ? 0x4ecca3 : (isOwned ? 0x4ecca3 : 0xb8860b), 0.8);
+    c.add(btnBg);
+    if (statusText) {
+      c.add(this.add.text(W / 2 - 100, 0, statusText, {
+        fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: statusColor
+      }).setOrigin(0.5));
+    } else {
+      c.add(Core.coinLabel(this, W / 2 - 100, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
+    }
+    if (clickFn) {
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+      btnBg.on('pointerout',  () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown', clickFn);
+    }
+    this.skinContainer.add(c);
+  }
+  async buyHint(count, price) {
+    const coins = Core.SDK.get('coins', 0);
+    if (coins < price) { this.showToast('Не хватает монет'); return; }
+    await Core.SDK.save({ coins: coins - price, hintsOwned: Core.SDK.get('hintsOwned', 3) + count });
+    Core.Audio.buy(); this.showToast('+' + count + ' подсказок!');
+    this.coinLabel.__setAmount(Core.SDK.get('coins', 0));
+  }
+  async buySkin(key, price) {
+    const coins = Core.SDK.get('coins', 0);
+    if (coins < price) { this.showToast('Не хватает монет'); return; }
+    const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
+    owned.push(key);
+    await Core.SDK.save({ coins: coins - price, ownedSkins: owned, currentSkin: key });
+    Core.Audio.buy(); this.showToast('Куплено: ' + Core.Skins.tubes[key].name);
+    if (owned.length >= 4) {
+      if (Core.Achievements.unlock('all_skins')) Core.showAchievement(this, 'all_skins');
+    }
+    this.scene.restart();
+  }
+  async selectSkin(key) {
+    await Core.SDK.save({ currentSkin: key });
+    Core.Audio.select();
+    this.scene.restart();
+  }
+  showToast(msg) {
+    const W = this.scale.width, H = this.scale.height;
+    const t = this.add.text(W / 2, H - 120, msg, {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+      backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setDepth(1000);
+    this.tweens.add({ targets: t, alpha: 0, y: H - 150, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+  }
+}
+
+const GameRegistry = { title: 'Ball Sort', sceneKey: 'BallSort' };
+
+const MAX_TUBE = 4;
+
+const Logic = {
+  clone: function (t) { return t.map(function (x) { return x.slice(); }); },
+  isUniform: function (t) { return t.length === MAX_TUBE && t.every(function (c) { return c === t[0]; }); },
+  isSolved: function (tubes) { return tubes.every(function (t) { return t.length === 0 || Logic.isUniform(t); }); },
+  canPour: function (tubes, from, to) {
+    if (from === to) return false;
+    const f = tubes[from], t = tubes[to];
+    if (f.length === 0) return false;
+    if (t.length >= MAX_TUBE) return false;
+    if (t.length === 0) return true;
+    return t[t.length - 1] === f[f.length - 1];
+  },
+  pourCount: function (tubes, from, to) {
+    if (!Logic.canPour(tubes, from, to)) return 0;
+    const f = tubes[from], t = tubes[to], c = f[f.length - 1];
+    let count = 0;
+    for (let i = f.length - 1; i >= 0 && f[i] === c; i--) count++;
+    return Math.min(count, MAX_TUBE - t.length);
+  },
+  applyPour: function (tubes, from, to) {
+    const n = Logic.pourCount(tubes, from, to);
+    for (let k = 0; k < n; k++) tubes[to].push(tubes[from].pop());
+    return n;
+  }
 };
 
-const _bootSave = loadSave();
-Sound.on = _bootSave.sound;
-CURRENT_LANG = _bootSave.lang || 'en';
-new Phaser.Game(config);
+function isSolvable(tubes, maxDepth) {
+  const start = Date.now(), memo = new Map();
+  function keyOf(t) { return t.map(function (x) { return x.join(','); }).join('|'); }
+  function dfs(t, depth) {
+    if (Date.now() - start > 350) return -1;
+    if (depth < 0) return -1;
+    const k = keyOf(t);
+    if (memo.has(k)) return memo.get(k);
+    if (Logic.isSolved(t)) { memo.set(k, 0); return 0; }
+    let best = -1;
+    for (let a = 0; a < t.length; a++) {
+      for (let b = 0; b < t.length; b++) {
+        if (!Logic.canPour(t, a, b)) continue;
+        if (t[b].length === 0 && Logic.isUniform(t[a])) continue;
+        const n = Logic.clone(t);
+        Logic.applyPour(n, a, b);
+        const r = dfs(n, depth - 1);
+        if (r >= 0 && (best === -1 || r + 1 < best)) best = r + 1;
+        if (best === 1) break;
+      }
+      if (best === 1) break;
+    }
+    memo.set(k, best);
+    return best;
+  }
+  return dfs(tubes, maxDepth) >= 0;
+}
 
-window.addEventListener('pointerdown', () => Sound.init(), { passive: true });
+function generateLevel(level, seed) {
+  const rng = (seed !== undefined && seed !== null) ? mulberry32(seed) : Math.random;
+  let colors;
+  if (seed !== undefined && seed !== null) {
+    colors = 5 + Math.floor(rng() * 3);
+  } else {
+    if (level <= 1) colors = 3;
+    else if (level <= 3) colors = 4;
+    else if (level <= 7) colors = 5;
+    else if (level <= 15) colors = 6;
+    else if (level <= 30) colors = 7;
+    else colors = Math.min(9, 7 + Math.floor((level - 30) / 15));
+  }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const balls = [];
+    for (let c = 0; c < colors; c++) for (let i = 0; i < MAX_TUBE; i++) balls.push(c);
+    Core.Utils.shuffleWith(balls, rng);
+    const tubes = [];
+    for (let i = 0; i < colors; i++) tubes.push(balls.slice(i * MAX_TUBE, (i + 1) * MAX_TUBE));
+    tubes.push([]); tubes.push([]);
+    if (Logic.isSolved(tubes)) continue;
+    if (isSolvable(tubes, 50 + colors * 8)) return { tubes: tubes, colors: colors };
+  }
+  const balls = [];
+  for (let c = 0; c < colors; c++) for (let i = 0; i < MAX_TUBE; i++) balls.push(c);
+  Core.Utils.shuffleWith(balls, rng);
+  const tubes = [];
+  for (let i = 0; i < colors; i++) tubes.push(balls.slice(i * MAX_TUBE, (i + 1) * MAX_TUBE));
+  tubes.push([]); tubes.push([]);
+  return { tubes: tubes, colors: colors };
+}
+
+class BallSortScene extends BaseGameScene {
+  constructor() { super('BallSort'); }
+  buildLevel(level) {
+    this.ballSkin = Core.SDK.get('currentBallSkin', 'classic');
+    const data = this.isDaily ? generateLevel(0, this.seed) : generateLevel(level);
+    this.tubes = data.tubes;
+    this.colors = data.colors;
+    this.layoutTubes();
+    this.renderTubes();
+  }
+  resetState() {
+    this.selected = -1;
+    this.undoStack = [];
+    this.animating = false;
+    this.doneTubes = new Set();
+    this.bonusAwarded = new Set();
+    this.doneGlows = {};
+    this.selectedGlow = null;
+  }
+  layoutTubes() {
+    const W = this.scale.width;
+    const n = this.tubes.length;
+    let cols, rows;
+    if (n <= 5) { cols = n; rows = 1; }
+    else { cols = Math.ceil(n / 2); rows = 2; }
+    const tubeW = 64, tubeH = 240, hGap = 20, vGap = 50;
+    const totalW = cols * tubeW + (cols - 1) * hGap;
+    const startX = (W - totalW) / 2 + tubeW / 2;
+    const startY = 185 + tubeH / 2;
+    this.tubeGeom = [];
+    for (let i = 0; i < n; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      this.tubeGeom.push({ x: startX + col * (tubeW + hGap), y: startY + row * (tubeH + vGap), w: tubeW, h: tubeH });
+    }
+  }
+  renderTubes() {
+    this.tubeGfx = []; this.ballGfx = []; this.zones = [];
+    for (let i = 0; i < this.tubes.length; i++) {
+      this.drawTube(i, false);
+      this.ballGfx[i] = [];
+      for (let j = 0; j < this.tubes[i].length; j++) this.ballGfx[i].push(this.makeBall(i, j));
+    }
+    for (let i = 0; i < this.tubes.length; i++) {
+      const g = this.tubeGeom[i];
+      const objs = [this.tubeGfx[i]].concat(this.ballGfx[i]);
+      objs.forEach(function (o) { o.setAlpha(0); o.y = o.y + 60; });
+      this.tweens.add({ targets: objs, alpha: 1, y: '-=60', duration: 420, delay: i * 55, ease: 'Back.Out' });
+      const zone = this.add.zone(g.x, g.y, g.w + 20, g.h + 20).setInteractive({ useHandCursor: true });
+      zone.on('pointerdown', () => this.onTubeClick(i));
+      this.zones.push(zone);
+    }
+  }
+  drawTube(i, selected) {
+    if (this.tubeGfx[i]) this.tubeGfx[i].destroy();
+    const g = this.tubeGeom[i];
+    const x0 = g.x - g.w / 2, y0 = g.y - g.h / 2, r = 14;
+    const s = this.skin;
+    const gfx = this.add.graphics();
+    if (selected) {
+      gfx.fillStyle(s.activeFill, s.activeFillAlpha);
+      gfx.lineStyle(s.lineWidth + 1, s.activeStroke, 0.95);
+    } else {
+      gfx.fillStyle(s.fill, s.fillAlpha);
+      gfx.lineStyle(s.lineWidth, s.stroke, s.strokeAlpha);
+    }
+    gfx.beginPath();
+    gfx.moveTo(x0, y0);
+    gfx.lineTo(x0, y0 + g.h - r);
+    gfx.arc(x0 + r, y0 + g.h - r, r, Math.PI, Math.PI / 2, true);
+    gfx.lineTo(x0 + g.w - r, y0 + g.h);
+    gfx.arc(x0 + g.w - r, y0 + g.h - r, r, Math.PI / 2, 0, true);
+    gfx.lineTo(x0 + g.w, y0);
+    gfx.closePath();
+    gfx.strokePath(); gfx.fillPath();
+    this.tubeGfx[i] = gfx;
+  }
+  createSelectionGlow(i) {
+    if (this.selectedGlow) this.selectedGlow.destroy();
+    const g = this.tubeGeom[i];
+    const glow = this.add.rectangle(g.x, g.y, g.w + 24, g.h + 24, 0x4ecca3, 0.12).setStrokeStyle(3, 0x4ecca3, 0.9).setDepth(-2);
+    this.tweens.add({ targets: glow, alpha: 0.03, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    this.selectedGlow = glow;
+  }
+  clearSelectionGlow() {
+    if (this.selectedGlow) { this.selectedGlow.destroy(); this.selectedGlow = null; }
+  }
+  ballPos(tubeIdx, idxFromBottom) {
+    const g = this.tubeGeom[tubeIdx];
+    const ballR = 26, step = ballR * 2 + 2, bottomPad = 12;
+    return { x: g.x, y: g.y + g.h / 2 - bottomPad - ballR - idxFromBottom * step };
+  }
+  makeBall(tubeIdx, idx) {
+    const pos = this.ballPos(tubeIdx, idx);
+    const color = Core.PALETTE[this.tubes[tubeIdx][idx] % Core.PALETTE.length];
+    const c = Core.renderBall(this, 26, color, this.ballSkin || 'classic');
+    c.setPosition(pos.x, pos.y);
+    return c;
+  }
+  onTubeClick(i) {
+    if (this.animating || this.levelJustFinished) return;
+    if (this.selected === -1) {
+      if (this.tubes[i].length === 0) return;
+      if (Logic.isUniform(this.tubes[i])) return;
+      this.selected = i;
+      this.drawTube(i, true); this.liftTop(i, true);
+      this.createSelectionGlow(i);
+      const g = this.tubeGeom[i];
+      Core.Juice.ring(this, g.x, g.y, 0x4ecca3, 20, g.w * 0.9, 400);
+      Core.Audio.select();
+    } else if (this.selected === i) {
+      this.drawTube(i, false); this.liftTop(i, false); this.selected = -1;
+      this.clearSelectionGlow();
+    } else {
+      const from = this.selected, to = i;
+      if (Logic.canPour(this.tubes, from, to)) {
+        this.drawTube(from, false); this.liftTop(from, false); this.selected = -1;
+        this.clearSelectionGlow();
+        this.pour(from, to, true, true);
+      } else {
+        Core.Audio.error(); Core.Juice.vibrate(30);
+        this.cameras.main.shake(180, 0.006);
+        this.shake(to);
+        this.combo = 0; this.updateComboIndicator();
+        this.drawTube(from, false); this.liftTop(from, false);
+        this.clearSelectionGlow();
+        if (this.tubes[i].length > 0 && !Logic.isUniform(this.tubes[i])) {
+          this.selected = i; this.drawTube(i, true); this.liftTop(i, true);
+          this.createSelectionGlow(i);
+        } else this.selected = -1;
+      }
+    }
+  }
+  liftTop(i, on) {
+    const top = this.ballGfx[i][this.ballGfx[i].length - 1];
+    if (!top) return;
+    const base = this.ballPos(i, this.tubes[i].length - 1);
+    this.tweens.add({ targets: top, y: on ? base.y - 12 : base.y, duration: 140, ease: 'Cubic.Out' });
+  }
+  shake(i) {
+    const self = this;
+    [this.tubeGfx[i]].concat(this.ballGfx[i]).forEach(function (t) {
+      const bx = t.x;
+      self.tweens.add({ targets: t, x: bx + 8, duration: 45, yoyo: true, repeat: 2, ease: 'Sine.InOut', onComplete: function () { t.x = bx; } });
+    });
+  }
+  checkDoneTubes() {
+    for (let i = 0; i < this.tubes.length; i++) {
+      const isDone = Logic.isUniform(this.tubes[i]);
+      const wasDone = this.doneTubes.has(i);
+      if (isDone && !wasDone) this.onTubeCompleted(i);
+      else if (!isDone && wasDone) {
+        this.doneTubes.delete(i);
+        if (this.doneGlows[i]) { this.doneGlows[i].destroy(); delete this.doneGlows[i]; }
+      }
+    }
+  }
+  onTubeCompleted(i) {
+    this.doneTubes.add(i);
+    const g = this.tubeGeom[i];
+    const color = Core.PALETTE[this.tubes[i][0] % Core.PALETTE.length];
+    const glow = this.add.graphics().setDepth(-1);
+    const x0 = g.x - g.w / 2 - 6, y0 = g.y - g.h / 2 - 6, r = 16;
+    glow.fillStyle(0xffd93d, 0.10);
+    glow.lineStyle(4, 0xffd93d, 1);
+    glow.beginPath();
+    glow.moveTo(x0, y0);
+    glow.lineTo(x0, y0 + g.h + 12 - r);
+    glow.arc(x0 + r, y0 + g.h + 12 - r, r, Math.PI, Math.PI / 2, true);
+    glow.lineTo(x0 + g.w + 12 - r, y0 + g.h + 12);
+    glow.arc(x0 + g.w + 12 - r, y0 + g.h + 12 - r, r, Math.PI / 2, 0, true);
+    glow.lineTo(x0 + g.w + 12, y0);
+    glow.closePath(); glow.strokePath(); glow.fillPath();
+    this.doneGlows[i] = glow;
+    this.tweens.add({ targets: glow, alpha: 0.4, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    Core.Juice.burst(this, g.x, g.y - g.h * 0.15, 0xffd93d, 32, 200);
+    Core.Juice.burst(this, g.x, g.y - g.h * 0.15, color, 24, 180);
+    const ring = this.add.circle(g.x, g.y, 20, 0xffffff, 0.85).setDepth(940);
+    this.tweens.add({ targets: ring, scale: 7, alpha: 0, duration: 550, ease: 'Cubic.Out', onComplete: () => ring.destroy() });
+    Core.Juice.ring(this, g.x, g.y, 0xffd93d, 40, 140, 500);
+    Core.Juice.screenFlash(this, 0xffd93d, 0.22, 280);
+    this.tweens.add({ targets: this.cameras.main, zoom: 1.02, duration: 130, yoyo: true, ease: 'Sine.InOut' });
+    Core.Juice.vibrate([30, 30, 30]);
+    Core.Audio.tubeComplete();
+    if (!this.bonusAwarded.has(i)) {
+      this.bonusAwarded.add(i);
+      this.addScore(50, i, { color: '#ffd93d', size: 34 });
+      const label = this.add.text(g.x, g.y - g.h / 2 - 32, '★ +50', {
+        fontFamily: Core.FONT, fontSize: '36px', fontStyle: '900', color: '#ffd93d',
+        stroke: '#000000', strokeThickness: 5
+      }).setOrigin(0.5).setDepth(1500).setScale(0);
+      this.tweens.add({ targets: label, scale: 1, duration: 350, ease: 'Back.Out' });
+      this.tweens.add({ targets: label, alpha: 0, y: label.y - 90, duration: 900, delay: 500, onComplete: () => label.destroy() });
+    }
+  }
+  animateMove(src, dst, cnt) {
+    if (cnt <= 0) return;
+    this.animating = true; this.refreshUndoButton();
+    const moved = this.ballGfx[src].splice(-cnt).reverse();
+    const destLen = this.ballGfx[dst].length;
+    for (let k = 0; k < cnt; k++) {
+      this.tubes[dst].push(this.tubes[src].pop());
+      this.ballGfx[dst].push(moved[k]);
+    }
+    const self = this;
+    for (let k = 0; k < cnt; k++) {
+      const ball = moved[k];
+      const target = this.ballPos(dst, destLen + k);
+      const trail = this.time.addEvent({
+        delay: 40, loop: true,
+        callback: function () {
+          if (!ball.active) { trail.remove(); return; }
+          Core.Juice.trailPuff(self, ball.x + (Math.random() - 0.5) * 10, ball.y + (Math.random() - 0.5) * 10, 0xffffff);
+        }
+      });
+      this.tweens.add({
+        targets: ball, x: target.x, y: target.y, duration: 280, delay: k * 80, ease: 'Cubic.Out',
+        onComplete: function () {
+          trail.remove();
+          self.tweens.add({ targets: ball, scale: 1.24, duration: 90, yoyo: true, ease: 'Quad.Out' });
+          self.tweens.add({ targets: ball, scale: 1.0, duration: 160, delay: 90, ease: 'Back.Out' });
+          Core.Juice.flash(self, target.x, target.y, 26);
+          Core.Juice.ring(self, target.x, target.y, 0xffffff, 26, 46, 250);
+          Core.Audio.drop();
+          if (k === cnt - 1) {
+            self.animating = false; self.refreshUndoButton();
+            self.checkDoneTubes();
+            if (Logic.isSolved(self.tubes)) self.onLevelComplete();
+          }
+        }
+      });
+    }
+  }
+  pour(from, to, recordUndo, countMove) {
+    const cnt = Logic.pourCount(this.tubes, from, to);
+    if (cnt === 0) return;
+    if (recordUndo) this.undoStack.push({ from: from, to: to, cnt: cnt });
+    this.animateMove(from, to, cnt);
+    if (countMove) {
+      this.moves++; this.updateMoves(); this.combo++;
+      if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+      const pts = Math.min(this.combo, 5) * 10;
+      this.addScore(pts, to);
+      this.updateComboIndicator();
+      if (this.combo >= 3 && (this.combo === 3 || this.combo % 5 === 0)) this.showCombo(this.combo);
+    }
+  }
+  doUndo() {
+    if (this.animating || this.levelJustFinished) return;
+    if (this.undoStack.length === 0) return;
+    const last = this.undoStack.pop();
+    this.undoCount++; this.combo = 0; this.updateComboIndicator();
+    this.clearSelectionGlow();
+    this.animateMove(last.to, last.from, last.cnt);
+    this.moves = Math.max(0, this.moves - 1);
+    this.updateMoves(); this.refreshUndoButton();
+  }
+  showHint() {
+    let best = null, bestScore = Infinity;
+    for (let a = 0; a < this.tubes.length; a++) {
+      for (let b = 0; b < this.tubes.length; b++) {
+        if (!Logic.canPour(this.tubes, a, b)) continue;
+        const n = Logic.clone(this.tubes);
+        Logic.applyPour(n, a, b);
+        let score = 0;
+        for (let i = 0; i < n.length; i++) if (n[i].length > 0 && !Logic.isUniform(n[i])) score++;
+        if (score < bestScore) { bestScore = score; best = { from: a, to: b }; }
+      }
+    }
+    if (!best) return;
+    this.flash(best.from);
+    this.time.delayedCall(400, () => this.flash(best.to));
+  }
+  flash(i) {
+    const g = this.tubeGeom[i];
+    const r = this.add.rectangle(g.x, g.y, g.w + 20, g.h + 20, 0xffeb3b, 0.35).setStrokeStyle(3, 0xffeb3b, 1).setDepth(50);
+    this.tweens.add({ targets: r, alpha: 0, duration: 600, onComplete: function () { r.destroy(); } });
+  }
+}
+
+try {
+  window.__game = new Phaser.Game({
+    type: Phaser.AUTO, width: 720, height: 1280, parent: 'game',
+    backgroundColor: '#0f3460',
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scene: [BootScene, MenuScene, AchievementsScene, LevelMapScene, ShopScene, BallSortScene]
+  });
+} catch (e) {
+  if (window.__showFatal) window.__showFatal('Запуск: ' + (e && e.message));
+  console.error(e);
+}
 </script>
 </body>
 </html>
