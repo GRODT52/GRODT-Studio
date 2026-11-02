@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Lumen Garden v0.3.0</title>
+<title>Lumen Garden v0.3.1</title>
 <style>
   html,body{margin:0;padding:0;height:100%;background:#070a12;overflow:hidden;touch-action:manipulation;}
   canvas{display:block;}
@@ -13,21 +13,20 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script>
 /* ============================================================
-   LUMEN GARDEN — v0.3.0
-   - Fireflies: extra terminals on branches (must be lit)
-   - Much harder difficulty curve from level 5
-   - Juice: ambient motes, light pulse, streak, splash, shake
-   - English-only branding, save key migration
+   LUMEN GARDEN — v0.3.1
+   - Fireflies = crystals on the path (not endpoints)
+   - Flowing current particles
+   - Rebalanced difficulty
+   - Fixed level-1 win condition
    ============================================================ */
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const W = 720, H = 1280;
 const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
 const SAVE_KEY = 'lumen_garden_save_v1';
 const LEGACY_SAVE_KEY = 'svetosad_save_v1';
 const LEVELS_TOTAL = 48;
 
-/* ─── Портал ─── */
 const PORTAL_URL = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
 const GAMES_URL  = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
 
@@ -71,7 +70,7 @@ function mulberry32(a){
    ============================================================ */
 const LANGS = {
   ru: {
-    subtitle:     'зажги все бутоны и светлячков · не потрать лишний ход',
+    subtitle:     'зажги все бутоны и кристаллы · не потрать лишний ход',
     play:         'Играть',
     continue:     'Продолжить',
     levels:       'УРОВНИ',
@@ -81,7 +80,7 @@ const LANGS = {
     min:          'мин',
     minimum:      'минимум',
     buds:         'Бутоны',
-    fireflies:    'Светлячки',
+    fireflies:    'Кристаллы',
     restart:      'Заново',
     hint:         'Подсказка',
     levelComplete:'Уровень пройден!',
@@ -100,7 +99,7 @@ const LANGS = {
     perfectStreak:'ИДЕАЛЬНО ×',
   },
   en: {
-    subtitle:     'light every bud and firefly · waste no move',
+    subtitle:     'light every bud and crystal · waste no move',
     play:         'Play',
     continue:     'Continue',
     levels:       'LEVELS',
@@ -110,7 +109,7 @@ const LANGS = {
     min:          'min',
     minimum:      'minimum',
     buds:         'Buds',
-    fireflies:    'Fireflies',
+    fireflies:    'Crystals',
     restart:      'Restart',
     hint:         'Hint',
     levelComplete:'Level complete!',
@@ -188,12 +187,11 @@ const Sound = {
 };
 
 /* ============================================================
-   СОХРАНЕНИЕ (с миграцией старого ключа)
+   СОХРАНЕНИЕ
    ============================================================ */
 function loadSave(){
   let raw = null;
   try { raw = localStorage.getItem(SAVE_KEY); } catch(e){}
-
   if (!raw){
     try {
       const legacy = localStorage.getItem(LEGACY_SAVE_KEY);
@@ -204,7 +202,6 @@ function loadSave(){
       }
     } catch(e){}
   }
-
   let s = null;
   try { s = JSON.parse(raw); } catch(e){}
   if (!s || typeof s !== 'object') s = {};
@@ -231,38 +228,37 @@ function saveWin(level, stars, moves, rank){
 }
 
 /* ============================================================
-   КОНФИГ УРОВНЯ — крутая кривая сложности
+   КОНФИГ УРОВНЯ
    ============================================================ */
 function getLevelConfig(levelNum){
   let size, bulbCount, fireflyCount;
 
   if      (levelNum <= 1)  { size = 4; bulbCount = 1; fireflyCount = 0; }
-  else if (levelNum <= 2)  { size = 4; bulbCount = 1; fireflyCount = 1; }
-  else if (levelNum <= 3)  { size = 5; bulbCount = 1; fireflyCount = 1; }
-  else if (levelNum <= 4)  { size = 5; bulbCount = 2; fireflyCount = 1; }
-  else if (levelNum <= 5)  { size = 6; bulbCount = 2; fireflyCount = 1; } // ← думаешь
-  else if (levelNum <= 7)  { size = 6; bulbCount = 2; fireflyCount = 2; }
-  else if (levelNum <= 9)  { size = 6; bulbCount = 2; fireflyCount = 2; }
-  else if (levelNum <= 12) { size = 7; bulbCount = 2; fireflyCount = 2; }
-  else if (levelNum <= 15) { size = 7; bulbCount = 2; fireflyCount = 3; }
-  else if (levelNum <= 20) { size = 7; bulbCount = 3; fireflyCount = 3; }
-  else if (levelNum <= 28) { size = 8; bulbCount = 3; fireflyCount = 3; }
-  else if (levelNum <= 40) { size = 8; bulbCount = 3; fireflyCount = 4; }
-  else                     { size = 8; bulbCount = 4; fireflyCount = 4; }
+  else if (levelNum <= 2)  { size = 5; bulbCount = 1; fireflyCount = 1; }
+  else if (levelNum <= 3)  { size = 5; bulbCount = 2; fireflyCount = 1; }
+  else if (levelNum <= 4)  { size = 6; bulbCount = 2; fireflyCount = 1; }
+  else if (levelNum <= 5)  { size = 6; bulbCount = 2; fireflyCount = 2; }
+  else if (levelNum <= 7)  { size = 6; bulbCount = 3; fireflyCount = 2; }
+  else if (levelNum <= 9)  { size = 7; bulbCount = 3; fireflyCount = 2; }
+  else if (levelNum <= 12) { size = 7; bulbCount = 3; fireflyCount = 3; }
+  else if (levelNum <= 15) { size = 7; bulbCount = 4; fireflyCount = 3; }
+  else if (levelNum <= 20) { size = 8; bulbCount = 4; fireflyCount = 3; }
+  else if (levelNum <= 28) { size = 8; bulbCount = 4; fireflyCount = 4; }
+  else if (levelNum <= 40) { size = 8; bulbCount = 5; fireflyCount = 4; }
+  else                     { size = 8; bulbCount = 5; fireflyCount = 5; }
 
-  const totalTerminals = bulbCount + fireflyCount;
   const targetLen = Math.max(6, Math.min(
-    Math.floor(size * size * 0.55),
-    6 + levelNum * 0.9 + totalTerminals * 2
+    Math.floor(size * size * 0.6),
+    6 + levelNum * 0.9 + bulbCount * 3
   ));
 
-  return { size, bulbCount, fireflyCount, totalTerminals, targetLen };
+  return { size, bulbCount, fireflyCount, targetLen };
 }
 
 /* ============================================================
    ГЕНЕРАТОР
    ============================================================ */
-function buildCandidate(size, totalTerminals, targetLen, rng){
+function buildCandidate(size, bulbCount, targetLen, rng){
   const key = (x,y)=>x+','+y;
   const inB = (x,y)=> x>=0 && y>=0 && x<size && y<size;
   const cells = new Map();
@@ -315,7 +311,7 @@ function buildCandidate(size, totalTerminals, targetLen, rng){
   let cands = main.path.slice(1, -1);
 
   let guard = 0;
-  while (terminals.length < totalTerminals && cands.length && guard++ < 200){
+  while (terminals.length < bulbCount && cands.length && guard++ < 200){
     const c = cands.splice(Math.floor(rng()*cands.length), 1)[0];
     const t = cells.get(key(c.x,c.y));
     if (!t) continue;
@@ -334,7 +330,7 @@ function buildCandidate(size, totalTerminals, targetLen, rng){
     cands = cands.concat(br.path.slice(1,-1));
   }
 
-  if (terminals.length < totalTerminals) return null;
+  if (terminals.length < bulbCount) return null;
   for (const b of terminals){
     const cell = cells.get(key(b.x,b.y));
     if (!cell || popcount(cell.conns) !== 1) return null;
@@ -388,39 +384,48 @@ function generateLevel(levelNum){
   let best = null;
   const tries = levelNum > 20 ? 180 : 120;
   for (let a=0; a<tries; a++){
-    const res = buildCandidate(cfg.size, cfg.totalTerminals, cfg.targetLen, rng);
+    const res = buildCandidate(cfg.size, cfg.bulbCount, cfg.targetLen, rng);
     if (res && (!best || res.total > best.total)) best = res;
     if (best && best.total >= cfg.targetLen) break;
   }
   if (!best) best = makeFallbackLevel(cfg.size);
 
-  // Назначаем роли терминалам: первый = бутон (main end), остальные — микс
-  const terminals = best.terminals;
-  const mainEnd = terminals[0];
-  const others  = terminals.slice(1);
-  for (let i=others.length-1; i>0; i--){
-    const j = Math.floor(rng()*(i+1));
-    [others[i], others[j]] = [others[j], others[i]];
-  }
-  const bulbEnds    = [mainEnd, ...others.slice(0, Math.max(0, cfg.bulbCount - 1))];
-  const fireflyEnds = others.slice(
-    Math.max(0, cfg.bulbCount - 1),
-    Math.max(0, cfg.bulbCount - 1) + cfg.fireflyCount
-  );
-
-  const bulbSet = new Set(bulbEnds.map(p => p.x+','+p.y));
-  const flySet  = new Set(fireflyEnds.map(p => p.x+','+p.y));
-
   const key = (x,y)=>x+','+y;
+  const bulbSet = new Set(best.terminals.map(p => key(p.x,p.y)));
+  const srcPos = best.source;
+
+  // Собираем кандидатов на кристаллы — только проходные плитки (2-3 соединения),
+  // НЕ источник, НЕ бутон. Предпочтение — далёкие от источника (длинный обход).
+  const flyCands = [];
+  for (const [k, c] of best.cells){
+    if (k === key(srcPos.x, srcPos.y)) continue;
+    if (bulbSet.has(k)) continue;
+    const n = popcount(c.conns);
+    if (n !== 2 && n !== 3) continue;
+    const dist = Math.abs(c.x - srcPos.x) + Math.abs(c.y - srcPos.y);
+    flyCands.push({ x: c.x, y: c.y, k, dist });
+  }
+
+  // Сортируем по убыванию расстояния (дальние — интереснее), затем шаффлим топ
+  flyCands.sort((a,b) => b.dist - a.dist);
+  const top = flyCands.slice(0, Math.min(flyCands.length, Math.max(6, cfg.fireflyCount * 3)));
+  for (let i=top.length-1; i>0; i--){
+    const j = Math.floor(rng()*(i+1));
+    [top[i], top[j]] = [top[j], top[i]];
+  }
+  const flyTiles = top.slice(0, cfg.fireflyCount);
+  const flySet = new Set(flyTiles.map(f => f.k));
+
   const tiles = [];
 
   for (const [k, c] of best.cells){
-    const isSrc = (c.x===best.source.x && c.y===best.source.y);
+    const isSrc = (c.x===srcPos.x && c.y===srcPos.y);
+    const isBulb = bulbSet.has(k);
+    const isFly = flySet.has(k);
     let type, canonical, rotatable = true;
 
     if (isSrc){ type='source'; canonical=c.conns; rotatable=false; }
-    else if (bulbSet.has(k)){ type='bulb'; canonical=c.conns; rotatable=false; }
-    else if (flySet.has(k)){ type='firefly'; canonical=c.conns; rotatable=false; }
+    else if (isBulb){ type='bulb'; canonical=c.conns; rotatable=false; }
     else {
       const n = popcount(c.conns);
       if (n===2){
@@ -434,7 +439,8 @@ function generateLevel(levelNum){
     const correctRots = [0,1,2,3].filter(r => rotMask(canonical, r) === c.conns);
     tiles.push({
       x:c.x, y:c.y, mask:c.conns, type, canonical,
-      rotatable, correctRots, rot:0, _vis:0, _lit:null, _litAny:null
+      rotatable, correctRots, rot:0, _vis:0, _lit:null, _litAny:null,
+      _firefly: isFly
     });
   }
 
@@ -466,8 +472,8 @@ function generateLevel(levelNum){
     size: best.size,
     tiles,
     par,
-    bulbCount: bulbEnds.length,
-    fireflyCount: fireflyEnds.length,
+    bulbCount: best.terminals.length,
+    fireflyCount: flyTiles.length,
     moveLimit
   };
 }
@@ -503,31 +509,61 @@ function drawBulbGfx(g, cell, lit){
   }
 }
 
+/* Кристалл (firefly) — ромб с острыми гранями, чётко отличается от бутона */
 function drawFireflyGfx(g, cell, lit){
   g.clear();
   const r = cell*0.13;
 
-  // Крылышки
   if (lit){
-    g.fillStyle(0xbfe8ff, 0.45);
-    g.fillEllipse(-r*0.85, -r*0.55, r*1.3, r*0.75);
-    g.fillEllipse( r*0.85, -r*0.55, r*1.3, r*0.75);
-  } else {
-    g.fillStyle(0x3a5480, 0.35);
-    g.fillEllipse(-r*0.85, -r*0.55, r*1.3, r*0.75);
-    g.fillEllipse( r*0.85, -r*0.55, r*1.3, r*0.75);
-  }
+    // Свечение
+    g.fillStyle(0x5fc8ff, 0.10); g.fillCircle(0,0,r*3.4);
+    g.fillStyle(0x9adcff, 0.22); g.fillCircle(0,0,r*1.9);
 
-  // Тело / свечение
-  if (lit){
-    g.fillStyle(0x7fd4ff, 0.16); g.fillCircle(0,0,r*2.6);
-    g.fillStyle(0xbfe8ff, 0.34); g.fillCircle(0,0,r*1.6);
-    g.fillStyle(0xffffff, 1);    g.fillCircle(0,0,r*0.85);
+    // Ромбовидный кристалл
+    g.fillStyle(0xffffff, 1);
+    g.beginPath();
+    g.moveTo(0, -r*1.35);
+    g.lineTo(r*0.85, 0);
+    g.lineTo(0, r*1.35);
+    g.lineTo(-r*0.85, 0);
+    g.closePath();
+    g.fillPath();
+
+    // Внутренняя грань
+    g.fillStyle(0xa0e8ff, 0.72);
+    g.beginPath();
+    g.moveTo(0, -r*0.85);
+    g.lineTo(r*0.5, 0);
+    g.lineTo(0, r*0.85);
+    g.lineTo(-r*0.5, 0);
+    g.closePath();
+    g.fillPath();
+
+    // Горячий центр
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(0, 0, r*0.28);
   } else {
-    g.fillStyle(0x0f1828, 1);    g.fillCircle(0,0,r*1.05);
-    g.lineStyle(Math.max(2, cell*0.024), 0x3a5480, 1);
-    g.strokeCircle(0,0,r*1.05);
-    g.fillStyle(0x2a4d7a, 1);    g.fillCircle(0,0,r*0.42);
+    // Спящий кристалл — тёмный ромб с тонкой обводкой
+    g.fillStyle(0x0f1a28, 1);
+    g.beginPath();
+    g.moveTo(0, -r*1.35);
+    g.lineTo(r*0.85, 0);
+    g.lineTo(0, r*1.35);
+    g.lineTo(-r*0.85, 0);
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(Math.max(2, cell*0.022), 0x3a5480, 1);
+    g.beginPath();
+    g.moveTo(0, -r*1.35);
+    g.lineTo(r*0.85, 0);
+    g.lineTo(0, r*1.35);
+    g.lineTo(-r*0.85, 0);
+    g.closePath();
+    g.strokePath();
+
+    g.fillStyle(0x2a4d7a, 1);
+    g.fillCircle(0, 0, r*0.22);
   }
 }
 
@@ -562,7 +598,6 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
   return c;
 }
 
-/* Круглая кнопка с толстой стрелкой влево */
 function makeArrowButton(scene, x, y, radius, onClick, opts){
   opts = opts || {};
   const c = scene.add.container(x, y);
@@ -633,7 +668,6 @@ class MenuScene extends Phaser.Scene {
       g.fillStyle(0x2a4a8a, 0.010);
       g.fillCircle(W/2, 300, 90 + i*40);
     }
-
     for (let i=0; i<28; i++){
       const sx = rnd()*W, sy = rnd()*H, sr = 1 + rnd()*1.6;
       const st = this.add.circle(sx, sy, sr, 0xcfe0ff, 0.15 + rnd()*0.5)
@@ -662,10 +696,8 @@ class MenuScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '18px', color: '#3a5480'
     }).setOrigin(1, 1);
 
-    /* Круглая кнопка на портал */
     makeArrowButton(this, 80, 96, 26, () => exitToPortal(PORTAL_URL));
 
-    /* RU/EN под нотой в столбик */
     const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
 
     const langBtnRU = this.add.text(W - 64, 150, 'RU', langStyleInactive)
@@ -788,6 +820,8 @@ class GameScene extends Phaser.Scene {
     this.streak       = 0;
     this._dangerPulse = false;
     this._lastDangerLevel = 0;
+    this._flowGen     = 0;
+    this._flowTimer   = null;
     this.tiles        = [];
     this.tileMap      = {};
     this.levelData    = generateLevel(this.levelNum);
@@ -816,7 +850,6 @@ class GameScene extends Phaser.Scene {
       g.fillCircle(W/2, 660, 120 + i*40);
     }
 
-    // Мерцающие звёзды
     for (let i=0; i<24; i++){
       const st = this.add.circle(rnd()*W, rnd()*H, 1 + rnd()*1.6,
                                 0xcfe0ff, 0.12 + rnd()*0.45)
@@ -828,17 +861,16 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    // Ambient motes — плавающие пылинки
-    for (let i = 0; i < 20; i++){
+    for (let i = 0; i < 18; i++){
       const m = this.add.circle(
         Math.random()*W, Math.random()*H,
-        1 + Math.random()*1.5, 0xaac4ff, 0.1 + Math.random()*0.3
+        1 + Math.random()*1.4, 0xaac4ff, 0.1 + Math.random()*0.28
       ).setBlendMode(Phaser.BlendModes.ADD);
       const life = 6000 + Math.random()*8000;
       const drift = () => {
         m.x = Math.random() * W;
         m.y = H + 20;
-        m.alpha = 0.1 + Math.random() * 0.3;
+        m.alpha = 0.1 + Math.random() * 0.28;
         this.tweens.add({
           targets: m,
           y: -20,
@@ -885,7 +917,6 @@ class GameScene extends Phaser.Scene {
       base.strokeRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
       cont.add(base);
 
-      // Glow от света
       const glow = this.add.graphics();
       glow.fillStyle(0xffb545, 1);
       glow.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
@@ -893,7 +924,6 @@ class GameScene extends Phaser.Scene {
       cont.add(glow);
       t._glow = glow;
 
-      // Hover highlight (перед трубой — чтобы не заслонять)
       const hover = this.add.graphics();
       hover.fillStyle(0xaaccff, 0.12);
       hover.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
@@ -915,16 +945,6 @@ class GameScene extends Phaser.Scene {
         drawBulbGfx(bg, cell, false);
         cont.add(bg);
         t._bulbG = bg;
-      } else if (t.type === 'firefly'){
-        const halo = this.add.circle(0, 0, cell*0.28, 0x7fd4ff, 0)
-          .setBlendMode(Phaser.BlendModes.ADD);
-        cont.add(halo);
-        t._halo = halo;
-
-        const fg = this.add.graphics();
-        drawFireflyGfx(fg, cell, false);
-        cont.add(fg);
-        t._flyG = fg;
       } else if (t.type === 'source'){
         const sg = this.add.graphics();
         drawSourceGfx(sg, cell);
@@ -957,14 +977,37 @@ class GameScene extends Phaser.Scene {
       t._cont = cont;
       this.tileMap[t.x+','+t.y] = t;
       this.tiles.push(t);
+
+      // Кристалл (firefly) — отдельный контейнер, НЕ вращается с плиткой
+      if (t._firefly){
+        const flyCont = this.add.container(px, py);
+        const flyG = this.add.graphics();
+        drawFireflyGfx(flyG, cell, false);
+        flyCont.add(flyG);
+
+        const halo = this.add.circle(0, 0, cell*0.26, 0x7fd4ff, 0)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        flyCont.add(halo);
+
+        flyCont.setScale(0.001);
+        this.tweens.add({
+          targets: flyCont, scale: 1, duration: 320,
+          delay: 220 + d*45 + 100, ease: 'Back.easeOut'
+        });
+
+        t._flyCont = flyCont;
+        t._flyG = flyG;
+        t._halo = halo;
+      }
     }
 
     this.lightGfx = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-    // Пульсация светового луча
+
+    // Дыхание света
     this.tweens.add({
       targets: this.lightGfx,
-      alpha: { from: 1, to: 0.72 },
-      duration: 1400,
+      alpha: { from: 1, to: 0.82 },
+      duration: 1000,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -1117,7 +1160,6 @@ class GameScene extends Phaser.Scene {
     this.movesLeft--;
     this.refreshMovesText();
 
-    // Streak
     if (t._decoy || !t.correctRots.includes(t.rot)){
       this.streak = 0;
     } else {
@@ -1252,26 +1294,36 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Активные кристаллы — только те, через которые ток ПРОШЁЛ (есть исходящий сегмент)
+    const activeFireflies = new Set();
+    for (const s of segs){
+      const k = s.x+','+s.y;
+      const tt = this.tileMap[k];
+      if (tt && tt._firefly) activeFireflies.add(k);
+    }
+
     const gfx = this.lightGfx;
     gfx.clear();
 
-    const passes = [
-      { w:0.30, c:0xff9d2e, a:0.06 },
-      { w:0.20, c:0xffb545, a:0.12 },
-      { w:0.12, c:0xffd98a, a:0.28 },
-      { w:0.055, c:0xfff8e0, a:0.95 }
+    // Тёплая 4-слойная подсветка (мягче, чем раньше)
+    const layers = [
+      { w:0.36, c:0xff7a1a, a:0.05 },
+      { w:0.22, c:0xffa83a, a:0.12 },
+      { w:0.13, c:0xffd06a, a:0.28 },
+      { w:0.06, c:0xfffbe0, a:0.95 }
     ];
-    for (const p of passes){
-      gfx.lineStyle(cell*p.w, p.c, p.a);
-      gfx.fillStyle(p.c, p.a);
+    for (const Lr of layers){
+      gfx.lineStyle(cell*Lr.w, Lr.c, Lr.a);
+      gfx.fillStyle(Lr.c, Lr.a);
       for (const s of segs){
         const x1 = bx + (s.x+0.5)*cell, y1 = by + (s.y+0.5)*cell;
         const x2 = x1 + DIRS[s.d].dx*cell, y2 = y1 + DIRS[s.d].dy*cell;
         gfx.beginPath(); gfx.moveTo(x1,y1); gfx.lineTo(x2,y2); gfx.strokePath();
-        gfx.fillCircle(x2, y2, cell*p.w*0.5);
+        gfx.fillCircle(x2, y2, cell*Lr.w*0.5);
       }
     }
 
+    // Подсветка плиток
     for (const t of this.levelData.tiles){
       const isLit = lit.has(t.x+','+t.y);
       if (isLit !== t._litAny){
@@ -1287,62 +1339,72 @@ class GameScene extends Phaser.Scene {
     let litFlies = 0, totalFlies = 0;
 
     for (const t of this.levelData.tiles){
-      const isTerm = (t.type === 'bulb' || t.type === 'firefly');
-      if (!isTerm) continue;
+      if (t.type === 'bulb'){
+        totalBulbs++;
+        const isLit = lit.has(t.x+','+t.y);
+        if (isLit) litBulbs++;
 
-      if (t.type === 'bulb') totalBulbs++;
-      else totalFlies++;
+        if (isLit !== t._lit){
+          t._lit = isLit;
+          drawBulbGfx(t._bulbG, cell, isLit);
 
-      const isLit = lit.has(t.x+','+t.y);
-      if (isLit){
-        if (t.type === 'bulb') litBulbs++;
-        else litFlies++;
+          if (t._halo){
+            this.tweens.killTweensOf(t._halo);
+            if (isLit){
+              t._halo.setAlpha(0.30).setScale(1);
+              this.tweens.add({
+                targets: t._halo, alpha: 0.10, scale: 1.18,
+                duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+              });
+              this.tweens.add({
+                targets: t._cont, scale: { from: 1.09, to: 1 },
+                duration: 340, ease: 'Back.easeOut'
+              });
+            } else {
+              t._halo.setAlpha(0).setScale(1);
+            }
+          }
+          if (isLit){ this.bloom(t); Sound.lit(); this.cameras.main.shake(120, 0.003); }
+        }
       }
 
-      if (isLit !== t._lit){
-        t._lit = isLit;
+      if (t._firefly){
+        totalFlies++;
+        const isLit = activeFireflies.has(t.x+','+t.y);
+        if (isLit) litFlies++;
 
-        if (t.type === 'bulb') drawBulbGfx(t._bulbG, cell, isLit);
-        else drawFireflyGfx(t._flyG, cell, isLit);
+        if (isLit !== t._lit){
+          t._lit = isLit;
+          if (t._flyG) drawFireflyGfx(t._flyG, cell, isLit);
 
-        if (t._halo){
-          this.tweens.killTweensOf(t._halo);
-          if (isLit){
-            t._halo.setAlpha(0.30).setScale(1);
-            this.tweens.add({
-              targets: t._halo, alpha: 0.10, scale: 1.18,
-              duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-            });
-            this.tweens.add({
-              targets: t._cont, scale: { from: 1.09, to: 1 },
-              duration: 340, ease: 'Back.easeOut'
-            });
-          } else {
-            t._halo.setAlpha(0).setScale(1);
+          if (t._halo){
+            this.tweens.killTweensOf(t._halo);
+            if (isLit){
+              t._halo.setAlpha(0.28).setScale(1);
+              this.tweens.add({
+                targets: t._halo, alpha: 0.08, scale: 1.2,
+                duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+              });
+            } else {
+              t._halo.setAlpha(0).setScale(1);
+            }
           }
-        }
 
-        // Firefly: лёгкий танец когда зажжён
-        if (t.type === 'firefly' && t._flyG){
-          this.tweens.killTweensOf(t._flyG);
-          if (isLit){
-            t._flyG.x = 0; t._flyG.y = 0;
-            this.tweens.add({
-              targets: t._flyG,
-              x: { from: -cell*0.05, to: cell*0.05 },
-              y: { from: -cell*0.03, to: cell*0.03 },
-              duration: 1400, yoyo: true, repeat: -1,
-              ease: 'Sine.easeInOut'
-            });
-          } else {
-            t._flyG.x = 0; t._flyG.y = 0;
+          // Плавное «дыхание» / парение кристалла
+          if (t._flyG){
+            this.tweens.killTweensOf(t._flyG);
+            t._flyG.y = 0;
+            if (isLit){
+              this.tweens.add({
+                targets: t._flyG,
+                y: { from: -cell*0.05, to: cell*0.05 },
+                duration: 1500, yoyo: true, repeat: -1,
+                ease: 'Sine.easeInOut'
+              });
+            }
           }
-        }
 
-        if (isLit){
-          if (t.type === 'bulb'){ this.bloom(t); Sound.lit(); }
-          else { this.fireflyBloom(t); Sound.flyLit(); }
-          this.cameras.main.shake(120, 0.003);
+          if (isLit){ this.fireflyBloom(t); Sound.flyLit(); this.cameras.main.shake(100, 0.003); }
         }
       }
     }
@@ -1356,13 +1418,71 @@ class GameScene extends Phaser.Scene {
       this.fliesText.setColor(litFlies === totalFlies ? '#7fd4ff' : '#3a6480');
     }
 
-    const allBulbs = litBulbs === totalBulbs && totalBulbs > 0;
-    const allFlies = litFlies === totalFlies && totalFlies > 0;
+    // Победа: все бутоны И все кристаллы активны
+    // (0 из 0 кристаллов = ок для уровня без кристаллов)
+    const allBulbs = totalBulbs > 0 && litBulbs === totalBulbs;
+    const allFlies = litFlies === totalFlies;
 
     if (allBulbs && allFlies && !this.solved && !this.failed){
       this.solved = true;
       this.time.delayedCall(520, () => this.showWin());
     }
+
+    // Запускаем / обновляем потоковые частицы
+    this.startFlowParticles(segs);
+  }
+
+  /* ⚡ Красивый поток электричества по проводу */
+  startFlowParticles(segs){
+    this._flowGen = (this._flowGen || 0) + 1;
+    const gen = this._flowGen;
+
+    if (this._flowTimer && this._flowTimer.remove) this._flowTimer.remove();
+    this._flowTimer = null;
+
+    if (!segs.length || this.solved || this.failed) return;
+
+    const spawn = () => {
+      if (this._flowGen !== gen) return;
+      if (this.solved || this.failed) return;
+
+      const s = segs[Math.floor(Math.random()*segs.length)];
+      const x1 = this.boardX + (s.x+0.5)*this.cell;
+      const y1 = this.boardY + (s.y+0.5)*this.cell;
+      const x2 = x1 + DIRS[s.d].dx*this.cell;
+      const y2 = y1 + DIRS[s.d].dy*this.cell;
+
+      // Яркая искра
+      const p = this.add.circle(x1, y1, this.cell*0.032, 0xfffbe8)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0.95);
+
+      this.tweens.add({
+        targets: p,
+        x: x2, y: y2,
+        alpha: 0,
+        duration: 550 + Math.random()*200,
+        ease: 'Sine.easeIn',
+        onComplete: () => p.destroy()
+      });
+
+      // Лёгкий шлейф позади искры
+      if (Math.random() < 0.5){
+        const trail = this.add.circle(x1, y1, this.cell*0.055, 0xffb545, 0.25)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({
+          targets: trail,
+          x: x2, y: y2,
+          alpha: 0, scale: 0.5,
+          duration: 650 + Math.random()*200,
+          onComplete: () => trail.destroy()
+        });
+      }
+
+      this._flowTimer = this.time.delayedCall(70 + Math.random()*90, spawn);
+    };
+
+    spawn();
   }
 
   bloom(t){
@@ -1399,7 +1519,7 @@ class GameScene extends Phaser.Scene {
     for (let i=0; i<10; i++){
       const a    = Math.random()*Math.PI*2;
       const dist = this.cell*(0.4 + Math.random()*0.6);
-      const c = this.add.circle(px, py, this.cell*0.045, 0x7fd4ff)
+      const c = this.add.circle(px, py, this.cell*0.045, 0x9adcff)
         .setAlpha(0.9)
         .setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({
@@ -1557,6 +1677,9 @@ class GameScene extends Phaser.Scene {
       if (t._cont){
         this.tweens.add({ targets: t._cont, alpha: 0.55, duration: 300 });
       }
+      if (t._flyCont){
+        this.tweens.add({ targets: t._flyCont, alpha: 0.55, duration: 300 });
+      }
     }
 
     const overlay = this.add.container(0, 0).setDepth(1000);
@@ -1598,6 +1721,7 @@ class GameScene extends Phaser.Scene {
             Sound.ui();
             for (const t of this.levelData.tiles){
               if (t._cont) this.tweens.add({ targets: t._cont, alpha: 1, duration: 200 });
+              if (t._flyCont) this.tweens.add({ targets: t._flyCont, alpha: 1, duration: 200 });
             }
             this.updateLight();
             overlay.destroy();
