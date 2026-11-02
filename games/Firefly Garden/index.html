@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Сад светлячков</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #0a0e1a;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #game { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  #hud {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    left: 16px; right: 16px;
+    display: flex; justify-content: space-between;
+    color: #8fa0c0; font-size: 14px;
+    pointer-events: none;
+    letter-spacing: 0.3px;
+  }
+  #levelText { color: #d8e0f0; font-weight: 600; }
+
+  .pop { animation: popText 0.42s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes popText {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+
+  #controls {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    left: 0; right: 0;
+    display: flex; justify-content: center; gap: 12px;
+    z-index: 10;
+  }
+  button {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(140,180,255,0.15);
+    color: #c8d4ea;
+    padding: 11px 22px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: background 0.15s, transform 0.08s;
+  }
+  button:active { background: rgba(255,255,255,0.14); transform: scale(0.96); }
+  #soundBtn { padding: 11px 14px; font-size: 15px; }
+
+  #win {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    background: rgba(8,12,22,0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 20;
+    animation: fade 0.35s ease;
+  }
+  #win.show { display: flex; }
+  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+  #win canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #win .content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: winIn 0.55s cubic-bezier(.2,1.4,.4,1);
+  }
+  @keyframes winIn {
+    from { opacity: 0; transform: scale(0.82) translateY(14px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  #win h1 {
+    font-size: 34px; margin: 0 0 8px;
+    color: #fff; font-weight: 600;
+    animation: glowPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { text-shadow: 0 0 30px rgba(180,220,255,0.45); }
+    50% { text-shadow: 0 0 55px rgba(180,220,255,0.9), 0 0 95px rgba(140,180,255,0.4); }
+  }
+  #win p { color: #8fa0c0; margin: 0 0 28px; font-size: 15px; }
+  #win button {
+    padding: 15px 40px; font-size: 16px;
+    background: rgba(140,180,255,0.15);
+    border-color: rgba(140,180,255,0.3);
+  }
+</style>
+</head>
+<body>
+<div id="game"><canvas id="c"></canvas></div>
+<div id="hud">
+  <div id="levelText">Уровень 1</div>
+  <div id="pairsText">0 / 3 пар</div>
+</div>
+<div id="controls">
+  <button id="undoBtn">↶ Отмена</button>
+  <button id="resetBtn">↻ Заново</button>
+  <button id="soundBtn" aria-label="Звук">🔊</button>
+</div>
+<div id="win">
+  <canvas id="wc"></canvas>
+  <div class="content">
+    <h1>Сад расцвёл ✨</h1>
+    <p id="winSub">все светлячки нашли друг друга</p>
+    <button id="nextBtn">Дальше →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- Константы ----------
+const COLORS = ['#ff5c9d', '#4ecdc4', '#ffd93d', '#a78bfa', '#ff9f43', '#5dd39e'];
+const DIRS = [[0,1],[1,0],[0,-1],[-1,0]];
+const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+
+// ---------- Canvas ----------
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+let cellSize = 0, gridX = 0, gridY = 0;
+
+// ---------- Состояние ----------
+const state = {
+  n: 5,
+  endpoints: {},
+  paths: {},
+  colorOf: {},
+  pop: {},
+  dragging: null,
+  level: 1,
+  dragSnapshot: null,
+};
+
+let currentPuzzle = null;
+let undoStack = [];
+let particles = [];
+let ripples = [];
+let ambient = [];
+let shake = 0;
+let flash = 0;
+let flashCol = [255, 255, 255];
+let introT = 0;
+let hoverCell = null;
+let lastTick = 0;
+let lastDeny = 0;
+let soundOn = true;
+
+// ---------- Утилиты ----------
+const manhattan = (a, b) => Math.abs(a.x-b.x) + Math.abs(a.y-b.y);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const easeOutBack = v => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(v-1, 3) + c1 * Math.pow(v-1, 2); };
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function stepToward(from, to) {
+  const dx = Math.sign(to.x - from.x);
+  const dy = Math.sign(to.y - from.y);
+  if (Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)) {
+    return { x: from.x + dx, y: from.y };
+  }
+  return { x: from.x, y: from.y + dy };
+}
+
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// точка на ломаной по нормированной длине
+function pointOnPolyline(pts, u) {
+  let total = 0;
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    segs.push(d);
+    total += d;
+  }
+  if (total <= 0) return null;
+  let target = u * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i]) {
+      const k = segs[i] === 0 ? 0 : target / segs[i];
+      return {
+        x: pts[i].x + (pts[i+1].x - pts[i].x) * k,
+        y: pts[i].y + (pts[i+1].y - pts[i].y) * k,
+      };
+    }
+    target -= segs[i];
+  }
+  return pts[pts.length - 1];
+}
+
+// ---------- Генерация поля ----------
+function randomHamiltonian(n) {
+  const path = [];
+  for (let y = 0; y < n; y++) {
+    const xs = [];
+    for (let x = 0; x < n; x++) xs.push(x);
+    if (y % 2 === 1) xs.reverse();
+    for (const x of xs) path.push({ x, y });
+  }
+  const total = n * n;
+  const cellToIdx = new Int32Array(total);
+  for (let i = 0; i < path.length; i++) cellToIdx[path[i].y*n + path[i].x] = i;
+
+  for (let iter = 0; iter < 1500; iter++) {
+    const end = path[path.length - 1];
+    const [dx, dy] = DIRS[(Math.random() * 4) | 0];
+    const nx = end.x + dx, ny = end.y + dy;
+    if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+    const k = cellToIdx[ny*n + nx];
+    if (k === path.length - 2) continue;
+    const np = [];
+    for (let i = 0; i <= k; i++) np.push(path[i]);
+    for (let i = path.length - 1; i > k; i--) np.push(path[i]);
+    for (let i = 0; i < np.length; i++) cellToIdx[np[i].y*n + np[i].x] = i;
+    path.length = 0;
+    for (const p of np) path.push(p);
+  }
+  return path;
+}
+
+function splitPath(path, numPairs, minLen) {
+  const total = path.length;
+  if (total < numPairs * minLen) return null;
+
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const positions = [];
+    for (let i = 1; i < total; i++) positions.push(i);
+    for (let i = positions.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [positions[i], positions[j]] = [positions[j], positions[i]];
+    }
+    const chosen = [];
+    for (const p of positions) {
+      if (chosen.length === numPairs - 1) break;
+      let ok = true;
+      for (const c of chosen) {
+        if (Math.abs(c - p) < minLen) { ok = false; break; }
+      }
+      if (ok) chosen.push(p);
+    }
+    if (chosen.length < numPairs - 1) continue;
+    chosen.sort((a, b) => a - b);
+    if (chosen[0] < minLen) continue;
+    if (total - chosen[chosen.length - 1] < minLen) continue;
+    const segs = [];
+    let start = 0;
+    for (const c of chosen) { segs.push(path.slice(start, c)); start = c; }
+    segs.push(path.slice(start));
+    if (segs.some(s => s.length < minLen)) continue;
+    return segs;
+  }
+  return null;
+}
+
+function difficultyFor(level) {
+  if (level <= 3)  return { n: 5, pairs: 3 };
+  if (level <= 8)  return { n: 6, pairs: 3 };
+  if (level <= 15) return { n: 6, pairs: 4 };
+  if (level <= 25) return { n: 7, pairs: 4 };
+  return { n: 7, pairs: 5 };
+}
+
+function generatePuzzle(level) {
+  const { n, pairs } = difficultyFor(level);
+  let segments = null;
+  let attempts = 0;
+  while (!segments && attempts < 30) {
+    segments = splitPath(randomHamiltonian(n), pairs, 4);
+    attempts++;
+  }
+  if (!segments) {
+    const path = randomHamiltonian(n);
+    segments = [];
+    const segLen = Math.floor(path.length / pairs);
+    for (let i = 0; i < pairs; i++) {
+      const s = i * segLen;
+      const e = i === pairs - 1 ? path.length : s + segLen;
+      segments.push(path.slice(s, e));
+    }
+  }
+
+  const pool = COLORS.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  const endpoints = {};
+  const colorOf = {};
+  segments.forEach((seg, i) => {
+    endpoints[i] = [seg[0], seg[seg.length - 1]];
+    colorOf[i] = pool[i % pool.length];
+  });
+
+  return { n, endpoints, colorOf };
+}
+
+// ---------- Уровень ----------
+function startLevel(level, puzzle) {
+  state.level = level;
+  if (!puzzle) puzzle = generatePuzzle(level);
+  currentPuzzle = puzzle;
+
+  state.n = puzzle.n;
+  state.endpoints = clone(puzzle.endpoints);
+  state.colorOf = { ...puzzle.colorOf };
+  state.paths = {};
+  state.pop = {};
+  for (const id in state.endpoints) state.paths[id] = [];
+  state.dragging = null;
+  state.dragSnapshot = null;
+  undoStack = [];
+  particles = [];
+  ripples = [];
+  shake = 0;
+  flash = 0;
+  introT = 0;
+
+  layout();
+  hideWin();
+  updateHud();
+  saveProgress();
+
+  // мягкое «приветствие» уровня
+  blip(noteOf(3), 0.35, 'sine', 0.05, 0, 1.02);
+  blip(noteOf(6), 0.45, 'sine', 0.045, 0.1, 1.02);
+}
+
+function resetLevel() {
+  blip(300, 0.18, 'sine', 0.06, 0, 0.55);
+  addShake(2);
+  startLevel(state.level, currentPuzzle);
+}
+
+function saveProgress() {
+  try { localStorage.setItem('firefly_level', String(state.level)); } catch(e) {}
+}
+function loadProgress() {
+  try {
+    const v = parseInt(localStorage.getItem('firefly_level'), 10);
+    if (v > 0) return v;
+  } catch(e) {}
+  return 1;
+}
+
+// ---------- Layout ----------
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  layout();
+  initAmbient();
+}
+
+function layout() {
+  const topPad = 70;
+  const bottomPad = 90;
+  const availW = W - 40;
+  const availH = H - topPad - bottomPad;
+  const size = Math.max(100, Math.min(availW, availH));
+  cellSize = size / state.n;
+  gridX = (W - size) / 2;
+  gridY = topPad + (availH - size) / 2;
+}
+
+// ---------- Логика проверок ----------
+function cellAt(px, py) {
+  const x = Math.floor((px - gridX) / cellSize);
+  const y = Math.floor((py - gridY) / cellSize);
+  if (x < 0 || y < 0 || x >= state.n || y >= state.n) return null;
+  return { x, y };
+}
+
+function isColorConnected(colorId) {
+  const path = state.paths[colorId];
+  if (!path || path.length < 2) return false;
+  const [a, b] = state.endpoints[colorId];
+  const f = path[0], l = path[path.length - 1];
+  const fA = f.x === a.x && f.y === a.y;
+  const fB = f.x === b.x && f.y === b.y;
+  const lA = l.x === a.x && l.y === a.y;
+  const lB = l.x === b.x && l.y === b.y;
+  return (fA && lB) || (fB && lA);
+}
+
+// ---------- Ввод ----------
+function onPointerDown(px, py) {
+  ensureAudio();
+  const cell = cellAt(px, py);
+  if (!cell) return;
+
+  addRipple(px, py, cellSize * 0.9, 'rgba(160,200,255,0.45)');
+  state.dragSnapshot = { paths: clone(state.paths) };
+
+  // Тап по эндпоинту
+  for (const id in state.endpoints) {
+    const [a, b] = state.endpoints[id];
+    if ((a.x === cell.x && a.y === cell.y) || (b.x === cell.x && b.y === cell.y)) {
+      const path = state.paths[id] || [];
+      if (path.length > 0) {
+        const f = path[0], l = path[path.length - 1];
+        if (f.x === cell.x && f.y === cell.y) state.paths[id] = [f];
+        else if (l.x === cell.x && l.y === cell.y) state.paths[id] = [l];
+        else state.paths[id] = [cell];
+      } else {
+        state.paths[id] = [cell];
+      }
+      state.dragging = { color: +id };
+      blip(noteOf(+id * 2), 0.14, 'triangle', 0.07);
+      sparkle(px, py, state.colorOf[id], 7, 90);
+      return;
+    }
+  }
+
+  // Тап по существующему пути — обрезаем
+  for (const id in state.paths) {
+    const path = state.paths[id];
+    for (let i = 0; i < path.length; i++) {
+      if (path[i].x === cell.x && path[i].y === cell.y) {
+        state.paths[id] = path.slice(0, i + 1);
+        state.dragging = { color: +id };
+        blip(520, 0.1, 'sine', 0.05);
+        return;
+      }
+    }
+  }
+}
+
+function onPointerMove(px, py) {
+  const target = cellAt(px, py);
+  hoverCell = target;
+  if (!state.dragging) return;
+  if (!target) return;
+
+  const colorId = state.dragging.color;
+
+  let safety = 0;
+  while (safety++ < 60) {
+    if (!state.dragging) return;
+    const path = state.paths[colorId];
+    if (!path || path.length === 0) return;
+    const last = path[path.length - 1];
+
+    if (last.x === target.x && last.y === target.y) return;
+
+    let next;
+    if (manhattan(last, target) === 1) {
+      next = target;
+    } else {
+      next = stepToward(last, target);
+      if (next.x === last.x && next.y === last.y) return;
+    }
+
+    // Наступаем на свой путь — обрезаем
+    const idx = path.findIndex(p => p.x === next.x && p.y === next.y);
+    if (idx >= 0 && idx < path.length - 1) {
+      state.paths[colorId] = path.slice(0, idx + 1);
+      blip(280, 0.09, 'sine', 0.05);
+      return;
+    }
+    if (idx === path.length - 1) return;
+
+    // Чужие эндпоинты
+    let blocked = false;
+    for (const other in state.endpoints) {
+      if (+other === colorId) continue;
+      const [a, b] = state.endpoints[other];
+      if ((a.x === next.x && a.y === next.y) || (b.x === next.x && b.y === next.y)) {
+        blocked = true; break;
+      }
+    }
+    if (blocked) { deny(next); return; }
+
+    // Чужие пути
+    for (const other in state.paths) {
+      if (+other === colorId) continue;
+      for (const p of state.paths[other]) {
+        if (p.x === next.x && p.y === next.y) { deny(next); return; }
+      }
+    }
+
+    // Свой второй эндпоинт — победа!
+    const [ea, eb] = state.endpoints[colorId];
+    const start = path[0];
+    const otherEnd = (start.x === ea.x && start.y === ea.y) ? eb : ea;
+    if (next.x === otherEnd.x && next.y === otherEnd.y) {
+      const wasConnected = isColorConnected(colorId);
+      state.paths[colorId].push(next);
+      if (!wasConnected) triggerBloom(colorId);
+      state.dragging = null;
+      updateHud();
+      checkWin();
+      return;
+    }
+
+    state.paths[colorId].push(next);
+
+    const cx = gridX + (next.x + 0.5) * cellSize;
+    const cy = gridY + (next.y + 0.5) * cellSize;
+    sparkle(cx, cy, state.colorOf[colorId], 2, 55);
+    tickSound();
+  }
+}
+
+function onPointerUp() {
+  if (state.dragSnapshot) {
+    if (JSON.stringify(state.paths) !== JSON.stringify(state.dragSnapshot.paths)) {
+      undoStack.push(state.dragSnapshot);
+      if (undoStack.length > 40) undoStack.shift();
+    }
+    state.dragSnapshot = null;
+  }
+  state.dragging = null;
+}
+
+// ---------- Микро-фидбек ----------
+function tickSound() {
+  const now = performance.now();
+  if (now - lastTick < 45) return;
+  lastTick = now;
+  blip(760 + Math.random() * 160, 0.05, 'sine', 0.022);
+}
+
+function deny(cell) {
+  const now = performance.now();
+  if (now - lastDeny > 140) {
+    lastDeny = now;
+    blip(95, 0.1, 'sawtooth', 0.045, 0, 0.7);
+    addShake(1.4);
+    const cx = gridX + (cell.x + 0.5) * cellSize;
+    const cy = gridY + (cell.y + 0.5) * cellSize;
+    addRipple(cx, cy, cellSize * 0.75, 'rgba(255,110,110,0.6)');
+  }
+}
+
+function addShake(v) {
+  shake = Math.min(shake + v, 14);
+}
+
+function sparkle(x, y, color, count, spd = 120) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = spd * (0.3 + Math.random());
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: 1,
+      decay: 1.4 + Math.random() * 1.4,
+      color,
+      size: 1.4 + Math.random() * 2.2,
+      grav: 0,
+    });
+  }
+}
+
+function addRipple(x, y, max, color) {
+  ripples.push({ x, y, r: 0, max, life: 1, color });
+}
+
+// ---------- Undo / Reset ----------
+function undo() {
+  if (undoStack.length === 0) return;
+  const snap = undoStack.pop();
+  state.paths = snap.paths;
+  state.pop = {};
+  state.dragging = null;
+  blip(420, 0.14, 'sine', 0.06, 0, 0.7);
+  addShake(1.5);
+  updateHud();
+}
+
+// ---------- HUD / Win ----------
+function popEl(el) {
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+}
+
+function updateHud() {
+  const lvlEl = document.getElementById('levelText');
+  const pairsEl = document.getElementById('pairsText');
+
+  const lvlStr = `Уровень ${state.level}`;
+  if (lvlEl.textContent !== lvlStr) { lvlEl.textContent = lvlStr; popEl(lvlEl); }
+
+  let connected = 0;
+  let total = 0;
+  for (const id in state.endpoints) {
+    total++;
+    if (isColorConnected(+id)) connected++;
+  }
+  const ps = `${connected} / ${total} пар`;
+  if (pairsEl.textContent !== ps) { pairsEl.textContent = ps; popEl(pairsEl); }
+}
+
+function checkWin() {
+  for (const id in state.endpoints) {
+    if (!isColorConnected(+id)) return;
+  }
+  setTimeout(showWin, 480);
+}
+
+const WIN_SUBS = [
+  'все светлячки нашли друг друга',
+  'ни одна искорка не потерялась',
+  'сад светится от края до края',
+  'тихая ночь, тёплый свет',
+];
+
+const wc = document.getElementById('wc');
+const wctx = wc.getContext('2d');
+let winParts = [];
+let winRAF = 0;
+let winRunning = false;
+let winLast = 0;
+
+function sizeWinCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  wc.width = Math.round(window.innerWidth * dpr);
+  wc.height = Math.round(window.innerHeight * dpr);
+  wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function winLoop(now) {
+  const dt = Math.min((now - winLast) / 1000, 0.05);
+  winLast = now;
+  const w = window.innerWidth, h = window.innerHeight;
+
+  wctx.setTransform(Math.min(window.devicePixelRatio || 1, 2), 0, 0, Math.min(window.devicePixelRatio || 1, 2), 0, 0);
+  wctx.clearRect(0, 0, w, h);
+
+  for (let i = winParts.length - 1; i >= 0; i--) {
+    const p = winParts[i];
+    p.vy += 420 * dt;
+    p.vx *= 0.995;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+    p.life -= dt * 0.26;
+    if (p.life <= 0 || p.y > h + 70) { winParts.splice(i, 1); continue; }
+
+    wctx.save();
+    wctx.globalAlpha = clamp(p.life, 0, 1);
+    wctx.translate(p.x, p.y);
+    wctx.rotate(p.rot);
+    wctx.fillStyle = p.color;
+    wctx.shadowBlur = 14;
+    wctx.shadowColor = p.color;
+    wctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.55);
+    wctx.restore();
+  }
+
+  if (winRunning) winRAF = requestAnimationFrame(winLoop);
+}
+
+function showWin() {
+  document.getElementById('winSub').textContent = WIN_SUBS[(Math.random() * WIN_SUBS.length) | 0];
+  document.getElementById('win').classList.add('show');
+
+  sizeWinCanvas();
+  winParts = [];
+  const w = window.innerWidth, h = window.innerHeight;
+  const cols = COLORS.concat(['#ffffff', '#cfe3ff']);
+
+  for (let i = 0; i < 150; i++) {
+    const fromSide = Math.random() < 0.5;
+    winParts.push({
+      x: fromSide ? (Math.random() < 0.5 ? -20 : w + 20) : Math.random() * w,
+      y: h * 0.10 + Math.random() * h * 0.35,
+      vx: (fromSide ? (Math.random() * 2 - 0.5) : (Math.random() - 0.5)) * 260,
+      vy: -230 - Math.random() * 260,
+      rot: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 11,
+      s: 5 + Math.random() * 9,
+      color: cols[(Math.random() * cols.length) | 0],
+      life: 1.3 + Math.random() * 0.8,
+    });
+  }
+
+  winRunning = true;
+  winLast = performance.now();
+  cancelAnimationFrame(winRAF);
+  winRAF = requestAnimationFrame(winLoop);
+
+  playWinFanfare();
+  vibrate([20, 50, 20, 50, 90]);
+
+  // волна света по полю
+  flashCol = [200, 230, 255];
+  flash = 1;
+  addShake(5);
+}
+
+function hideWin() {
+  document.getElementById('win').classList.remove('show');
+  winRunning = false;
+  cancelAnimationFrame(winRAF);
+  winParts = [];
+  try {
+    wctx.setTransform(1, 0, 0, 1, 0, 0);
+    wctx.clearRect(0, 0, wc.width, wc.height);
+  } catch(e) {}
+}
+
+// ---------- Частицы / эффекты ----------
+function triggerBloom(colorId) {
+  const [a, b] = state.endpoints[colorId];
+  const color = state.colorOf[colorId];
+
+  for (const e of [a, b]) {
+    const px = gridX + (e.x + 0.5) * cellSize;
+    const py = gridY + (e.y + 0.5) * cellSize;
+    for (let i = 0; i < 26; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 50 + Math.random() * 230;
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1,
+        decay: 0.9 + Math.random() * 1.1,
+        color,
+        size: 2 + Math.random() * 3.2,
+        grav: 0,
+      });
+    }
+    addRipple(px, py, cellSize * 1.8, color);
+  }
+
+  state.pop[colorId] = 1;
+  addShake(3.5);
+  flashCol = hexToRgb(color);
+  flash = 1;
+
+  blip(noteOf(colorId * 2), 0.22, 'triangle', 0.085);
+  blip(noteOf(colorId * 2 + 2), 0.34, 'sine', 0.075, 0.09);
+  vibrate(18);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += (p.grav || 0) * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.94;
+    p.vy *= 0.94;
+    p.life -= dt * p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function updateRipples(dt) {
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i];
+    r.life -= dt * 1.9;
+    r.r += (r.max - r.r) * dt * 9;
+    if (r.life <= 0) ripples.splice(i, 1);
+  }
+}
+
+// ---------- Фоновые светлячки ----------
+function initAmbient() {
+  const count = Math.round((W * H) / 45000);
+  ambient = [];
+  for (let i = 0; i < count; i++) {
+    ambient.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 10,
+      vy: (Math.random() - 0.5) * 10,
+      r: 0.9 + Math.random() * 1.7,
+      phase: Math.random() * Math.PI * 2,
+      sp: 0.5 + Math.random() * 1.3,
+      hue: Math.random() < 0.55 ? '#ffe98a' : (Math.random() < 0.5 ? '#8ef0c0' : '#9dc6ff'),
+    });
+  }
+}
+
+function updateAmbient(dt) {
+  for (const p of ambient) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.x < -30) p.x = W + 30;
+    if (p.x > W + 30) p.x = -30;
+    if (p.y < -30) p.y = H + 30;
+    if (p.y > H + 30) p.y = -30;
+  }
+}
+
+function drawAmbient(t) {
+  ctx.save();
+  for (const p of ambient) {
+    const a = 0.2 + 0.8 * Math.abs(Math.sin(t * p.sp + p.phase));
+    const r = p.r * (0.7 + 0.6 * a);
+    ctx.globalAlpha = 0.30 * a;
+    ctx.shadowBlur = r * 8;
+    ctx.shadowColor = p.hue;
+    ctx.fillStyle = p.hue;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Звук ----------
+let audioCtx = null;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) { audioCtx = null; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+const noteOf = (i) => 261.63 * Math.pow(2, PENTA[((i % PENTA.length) + PENTA.length) % PENTA.length] / 12);
+
+function blip(freq, dur = 0.16, type = 'triangle', vol = 0.09, delay = 0, slide = 1) {
+  if (!audioCtx || !soundOn) return;
+  try {
+    const t0 = audioCtx.currentTime + delay;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slide !== 1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t0 + dur);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
+  } catch(e) {}
+}
+
+function playWinFanfare() {
+  const seq = [0, 2, 4, 7, 9, 12, 14];
+  seq.forEach((s, i) => blip(noteOf(s + 5), 0.55, 'sine', 0.06, i * 0.085, 1.004));
+  blip(noteOf(12), 0.9, 'triangle', 0.04, 0.6, 1.002);
+}
+
+function vibrate(pattern) {
+  if (!soundOn) return;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e) {}
+}
+
+// ---------- Рендер ----------
+function drawGrid() {
+  const gx = gridX, gy = gridY, cs = cellSize, n = state.n;
+  const radius = Math.max(4, cs * 0.16);
+
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const a = clamp((introT - (x + y) * 0.035) / 0.35, 0, 1);
+      if (a <= 0) continue;
+      const px = gx + x * cs;
+      const py = gy + y * cs;
+
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.022)';
+      roundRect(px + 1.5, py + 1.5, cs - 3, cs - 3, radius);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(100, 150, 255, 0.055)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (hoverCell && !state.dragging && introT > 0.6) {
+    const px = gx + hoverCell.x * cs;
+    const py = gy + hoverCell.y * cs;
+    ctx.fillStyle = 'rgba(160, 200, 255, 0.07)';
+    roundRect(px + 2, py + 2, cs - 4, cs - 4, radius);
+    ctx.fill();
+  }
+}
+
+function drawPaths(t) {
+  const gx = gridX, gy = gridY, cs = cellSize;
+
+  for (const id in state.paths) {
+    const path = state.paths[id];
+    if (path.length < 2) continue;
+    const color = state.colorOf[id];
+    const connected = isColorConnected(+id);
+
+    const pts = path.map(p => ({ x: gx + (p.x + 0.5) * cs, y: gy + (p.y + 0.5) * cs }));
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const pulse = connected ? 0.85 + 0.15 * Math.sin(t * 3.4 + (+id)) : 1;
+
+    // свечение
+    ctx.shadowBlur = cs * 0.7 * pulse;
+    ctx.shadowColor = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = cs * 0.32;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+
+    // яркая сердцевина
+    ctx.shadowBlur = cs * 0.25;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = cs * 0.10;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    ctx.restore();
+
+    // бегущий светлячок по готовому пути
+    if (connected) {
+      const pos = pointOnPolyline(pts, (t * 0.22 + (+id) * 0.17) % 1);
+      if (pos) {
+        const rg = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, cs * 0.7);
+        rg.addColorStop(0, 'rgba(255,255,255,0.95)');
+        rg.addColorStop(0.25, color);
+        rg.addColorStop(1, color + '00');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, cs * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // светящийся кончик при перетаскивании
+  if (state.dragging) {
+    const id = state.dragging.color;
+    const path = state.paths[id];
+    if (path && path.length) {
+      const last = path[path.length - 1];
+      const px = gx + (last.x + 0.5) * cs;
+      const py = gy + (last.y + 0.5) * cs;
+      const col = state.colorOf[id];
+      const r = cs * (0.42 + 0.08 * Math.sin(t * 9));
+      const rg = ctx.createRadialGradient(px, py, 0, px, py, r);
+      rg.addColorStop(0, 'rgba(255,255,255,0.9)');
+      rg.addColorStop(0.35, col);
+      rg.addColorStop(1, col + '00');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawEndpoints(t) {
+  const gx = gridX, gy = gridY, cs = cellSize;
+
+  for (const id in state.endpoints) {
+    const color = state.colorOf[id];
+    const [a, b] = state.endpoints[id];
+    const connected = isColorConnected(+id);
+    const pop = state.pop[id] || 0;
+    const intro = clamp((introT - 0.35 - (+id) * 0.05) / 0.35, 0, 1);
+    const introScale = easeOutBack(intro);
+
+    for (const e of [a, b]) {
+      const px = gx + (e.x + 0.5) * cs;
+      const py = gy + (e.y + 0.5) * cs;
+      const pulse = 0.85 + 0.15 * Math.sin(t * 2.6 + e.x * 1.3 + e.y * 1.7);
+      const sc = introScale * (1 + pop * 0.55);
+      if (sc < 0.02) continue;
+
+      const glowR = cs * (connected ? 0.95 : 0.75) * pulse * sc;
+
+      const rg = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+      rg.addColorStop(0, color);
+      rg.addColorStop(0.45, color + '99');
+      rg.addColorStop(1, color + '00');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = color;
+      ctx.shadowBlur = cs * 0.3;
+      ctx.shadowColor = color;
+      ctx.beginPath();
+      ctx.arc(px, py, cs * 0.22 * pulse * sc, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(px, py, cs * 0.08 * sc, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+    ctx.fillStyle = p.color;
+    ctx.shadowBlur = p.size * 2.8;
+    ctx.shadowColor = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * (0.5 + p.life * 0.6), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawRipples() {
+  for (const r of ripples) {
+    ctx.globalAlpha = Math.max(0, r.life) * 0.7;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = Math.max(1, r.life * 3);
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, Math.max(0.1, r.r), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawVignette() {
+  const g = ctx.createRadialGradient(W/2, H/2, Math.min(W, H) * 0.35, W/2, H/2, Math.max(W, H) * 0.78);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function render(t) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, 'rgba(40, 65, 110, 0.35)');
+  bg.addColorStop(1, 'rgba(5, 8, 15, 0)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  drawAmbient(t);
+
+  ctx.save();
+  if (shake > 0.05) {
+    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  }
+  drawGrid();
+  drawPaths(t);
+  drawEndpoints(t);
+  drawParticles();
+  drawRipples();
+  ctx.restore();
+
+  drawVignette();
+
+  if (flash > 0.01) {
+    ctx.fillStyle = `rgba(${flashCol[0]},${flashCol[1]},${flashCol[2]},${flash * 0.3})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ---------- Цикл ----------
+let lastT = 0;
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+  const t = now / 1000;
+
+  introT = Math.min(introT + dt * 1.6, 5);
+  shake *= Math.pow(0.0012, dt);
+  if (shake < 0.05) shake = 0;
+  flash *= Math.pow(0.02, dt);
+  for (const id in state.pop) state.pop[id] = Math.max(0, state.pop[id] - dt * 2.0);
+
+  updateParticles(dt);
+  updateRipples(dt);
+  updateAmbient(dt);
+  render(t);
+
+  requestAnimationFrame(loop);
+}
+
+// ---------- Events ----------
+canvas.addEventListener('pointerdown', e => {
+  try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
+  const r = canvas.getBoundingClientRect();
+  onPointerDown(e.clientX - r.left, e.clientY - r.top);
+});
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  onPointerMove(e.clientX - r.left, e.clientY - r.top);
+});
+canvas.addEventListener('pointerup', e => {
+  try { canvas.releasePointerCapture(e.pointerId); } catch(err) {}
+  onPointerUp();
+});
+canvas.addEventListener('pointercancel', () => { onPointerUp(); });
+canvas.addEventListener('pointerleave', () => { hoverCell = null; });
+
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('resetBtn').addEventListener('click', resetLevel);
+document.getElementById('nextBtn').addEventListener('click', () => {
+  hideWin();
+  blip(noteOf(2), 0.2, 'sine', 0.07, 0, 1.3);
+  startLevel(state.level + 1);
+});
+
+const soundBtn = document.getElementById('soundBtn');
+soundBtn.addEventListener('click', () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? '🔊' : '🔇';
+  if (soundOn) { ensureAudio(); blip(660, 0.14, 'sine', 0.08); }
+});
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+
+// ---------- Старт ----------
+resize();
+startLevel(loadProgress());
+requestAnimationFrame(t => { lastT = t; loop(t); });
+
+})();
+</script>
+</body>
+</html>
