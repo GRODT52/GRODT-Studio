@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Lumen Garden v0.2.1</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#070a12;overflow:hidden;touch-action:manipulation;}
+  canvas{display:block;}
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script>
+/* ============================================================
+   LUMEN GARDEN — v0.2.1
+   - Full board: all cells filled with tiles (real + decoy)
+   - Multi-language (RU / EN) with menu selector
+   - Hard move limit + S/A/B/C ranks
+   - Portal exit buttons (menu + in-game)
+   ============================================================ */
+
+const VERSION = '0.2.1';
+const W = 720, H = 1280;
+const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
+const SAVE_KEY = 'svetosad_save_v1';
+const LEVELS_TOTAL = 48;
+
+/* ─── Настройки портала ─── ЗАМЕНИ НА СВОИ АДРЕСА ─── */
+const PORTAL_URL = 'https://example.com';         // главный сайт
+const GAMES_URL  = 'https://example.com/games';   // каталог игр (если нужна отдельная кнопка)
+
+/* Универсальный выход: сначала postMessage родителю (для iframe),
+   потом редирект. Если URL не задан — history.back(). */
+function exitToPortal(url){
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'lumen-garden:exit', url }, '*');
+    }
+  } catch(e){}
+  try {
+    if (url && /^https?:\/\//.test(url)) {
+      window.location.href = url;
+    } else {
+      window.history.back();
+    }
+  } catch(e){}
+}
+
+const DIRS = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+const bit  = d => 1 << d;
+const opp  = d => (d + 2) % 4;
+
+function rotMask(mask, r){
+  let o = 0;
+  for (let i=0;i<4;i++) if (mask & (1<<i)) o |= 1 << ((i + r) % 4);
+  return o;
+}
+function popcount(m){ let c=0; while(m){ c += m & 1; m >>= 1; } return c; }
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================
+   ЛОКАЛИЗАЦИЯ
+   ============================================================ */
+const LANGS = {
+  ru: {
+    subtitle:     'зажги все бутоны · не потрать лишний ход',
+    play:         'Играть',
+    continue:     'Продолжить',
+    levels:       'УРОВНИ',
+    level:        'Уровень',
+    moves:        'Ходы',
+    movesLower:   'ходов',
+    min:          'мин',
+    minimum:      'минимум',
+    buds:         'Бутоны',
+    restart:      'Заново',
+    hint:         'Подсказка',
+    levelComplete:'Уровень пройден!',
+    best:         'лучший',
+    next:         'Далее',
+    toMenu:       'В меню',
+    toLevels:     'К уровням',
+    rankS:        'ИДЕАЛЬНО',
+    rankA:        'ОТЛИЧНО',
+    rankB:        'ХОРОШО',
+    rankC:        'ПРОЙДЕНО',
+    withered:     'Сад увял',
+    outOfMoves:   'Закончились ходы',
+    adReward:     '+5 ходов (реклама)',
+    backSite:     '← Сайт',
+  },
+  en: {
+    subtitle:     'light every bud · waste no move',
+    play:         'Play',
+    continue:     'Continue',
+    levels:       'LEVELS',
+    level:        'Level',
+    moves:        'Moves',
+    movesLower:   'moves',
+    min:          'min',
+    minimum:      'minimum',
+    buds:         'Buds',
+    restart:      'Restart',
+    hint:         'Hint',
+    levelComplete:'Level complete!',
+    best:         'best',
+    next:         'Next',
+    toMenu:       'Menu',
+    toLevels:     'Levels',
+    rankS:        'PERFECT',
+    rankA:        'GREAT',
+    rankB:        'GOOD',
+    rankC:        'CLEARED',
+    withered:     'The garden withered',
+    outOfMoves:   'Out of moves',
+    adReward:     '+5 moves (ad)',
+    backSite:     '← Site',
+  }
+};
+
+let CURRENT_LANG = 'en';
+function L(key){
+  const d = LANGS[CURRENT_LANG] || LANGS.en;
+  return (d[key] != null ? d[key] : (LANGS.en[key] != null ? LANGS.en[key] : key));
+}
+
+/* ============================================================
+   ЗВУК
+   ============================================================ */
+const Sound = {
+  ctx: null,
+  on: true,
+
+  init(){
+    if (!this.ctx){
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      } catch(e){ this.ctx = null; }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+
+  tone(freq, dur, o){
+    if (!this.on || !this.ctx) return;
+    o = o || {};
+    const t0  = this.ctx.currentTime + (o.delay || 0);
+    const osc = this.ctx.createOscillator();
+    const g   = this.ctx.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.to), t0 + dur);
+    const vol = (o.vol == null ? 0.12 : o.vol);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(this.ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.04);
+  },
+
+  tap(){    this.tone(430, 0.09, {type:'triangle', vol:0.09, to:700}); },
+  locked(){ this.tone(150, 0.13, {type:'sawtooth', vol:0.045, to:90}); },
+  warn(){   this.tone(880, 0.10, {type:'sine', vol:0.09, to:660}); },
+  hint(){   this.tone(880, 0.12, {type:'sine', vol:0.07});
+            this.tone(1320, 0.18, {type:'sine', vol:0.06, delay:0.09}); },
+  lit(){    [660, 880, 1108].forEach((f,i)=>
+              this.tone(f, 0.22, {type:'sine', vol:0.08, delay:i*0.07})); },
+  win(){    [523, 659, 784, 1046, 1318].forEach((f,i)=>
+              this.tone(f, 0.38, {type:'triangle', vol:0.085, delay:i*0.1})); },
+  fail(){   [440, 330, 260, 200].forEach((f,i)=>
+              this.tone(f, 0.35, {type:'triangle', vol:0.09, delay:i*0.12})); },
+  ui(){     this.tone(620, 0.06, {type:'sine', vol:0.06, to:820}); }
+};
+
+/* ============================================================
+   СОХРАНЕНИЕ
+   ============================================================ */
+function loadSave(){
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(e){}
+  if (!s || typeof s !== 'object') s = {};
+  if (!s.max)   s.max = 1;
+  if (!s.stars) s.stars = {};
+  if (!s.best)  s.best  = {};
+  if (!s.ranks) s.ranks = {};
+  if (s.sound === undefined) s.sound = true;
+  if (!s.lang)  s.lang = 'en';
+  return s;
+}
+function writeSave(s){
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch(e){}
+}
+function saveWin(level, stars, moves, rank){
+  const s = loadSave();
+  s.stars[level] = Math.max(s.stars[level] || 0, stars);
+  if (moves != null && (!s.best[level] || moves < s.best[level])) s.best[level] = moves;
+  const order = { S:4, A:3, B:2, C:1 };
+  if (rank && (!s.ranks[level] || (order[rank] || 0) > (order[s.ranks[level]] || 0)))
+    s.ranks[level] = rank;
+  if (level >= s.max) s.max = level + 1;
+  writeSave(s);
+}
+
+/* ============================================================
+   ГЕНЕРАТОР УРОВНЕЙ
+   ============================================================ */
+function buildCandidate(size, bulbCount, targetLen, rng){
+  const key = (x,y)=>x+','+y;
+  const inB = (x,y)=> x>=0 && y>=0 && x<size && y<size;
+  const cells = new Map();
+
+  const edge = [];
+  for (let y=0;y<size;y++) for (let x=0;x<size;x++)
+    if (x===0||y===0||x===size-1||y===size-1) edge.push({x,y});
+  const s = edge[Math.floor(rng()*edge.length)];
+  const vd = [];
+  for (let d=0; d<4; d++) if (inB(s.x+DIRS[d].dx, s.y+DIRS[d].dy)) vd.push(d);
+  if (!vd.length) return null;
+  const sdir = vd[Math.floor(rng()*vd.length)];
+
+  cells.set(key(s.x,s.y), {x:s.x, y:s.y, conns: bit(sdir)});
+
+  const walk = (sx, sy, sdir0, maxLen) => {
+    let cx=sx, cy=sy, dir=sdir0, len=0;
+    const path = [];
+    while (len < maxLen){
+      const opts = [];
+      for (let d=0; d<4; d++){
+        if (len>0 && d===opp(dir)) continue;
+        const nx=cx+DIRS[d].dx, ny=cy+DIRS[d].dy;
+        if (!inB(nx,ny) || cells.has(key(nx,ny))) continue;
+        opts.push(d);
+      }
+      let cand = opts;
+      if (len===0) cand = opts.filter(d=>d===sdir0);
+      if (!cand.length) break;
+
+      let nd;
+      if (cand.includes(dir) && rng() < 0.62) nd = dir;
+      else nd = cand[Math.floor(rng()*cand.length)];
+
+      const nx=cx+DIRS[nd].dx, ny=cy+DIRS[nd].dy;
+      cells.get(key(cx,cy)).conns |= bit(nd);
+      cells.set(key(nx,ny), {x:nx, y:ny, conns: bit(opp(nd))});
+      path.push({x:cx, y:cy});
+      cx=nx; cy=ny; dir=nd; len++;
+    }
+    path.push({x:cx, y:cy});
+    return { path, end:{x:cx,y:cy}, len };
+  };
+
+  const main = walk(s.x, s.y, sdir, targetLen);
+  if (main.len < 3) return null;
+
+  const bulbs = [main.end];
+  let total = main.len;
+  let cands = main.path.slice(1, -1);
+
+  let guard = 0;
+  while (bulbs.length < bulbCount && cands.length && guard++ < 120){
+    const c = cands.splice(Math.floor(rng()*cands.length), 1)[0];
+    const t = cells.get(key(c.x,c.y));
+    if (!t) continue;
+    const free = [];
+    for (let d=0; d<4; d++){
+      if (t.conns & bit(d)) continue;
+      const nx=c.x+DIRS[d].dx, ny=c.y+DIRS[d].dy;
+      if (inB(nx,ny) && !cells.has(key(nx,ny))) free.push(d);
+    }
+    if (!free.length) continue;
+    const d0 = free[Math.floor(rng()*free.length)];
+    const br = walk(c.x, c.y, d0, Math.max(2, Math.round(targetLen*0.6)));
+    if (br.len < 1) continue;
+    bulbs.push(br.end);
+    total += br.len;
+    cands = cands.concat(br.path.slice(1,-1));
+  }
+
+  if (bulbs.length < bulbCount) return null;
+  for (const b of bulbs){
+    const cell = cells.get(key(b.x,b.y));
+    if (!cell || popcount(cell.conns) !== 1) return null;
+  }
+
+  return { cells, source:s, bulbs, size, total };
+}
+
+function makeFallbackLevel(size){
+  const cells = new Map(), y = 1, key=(x,y)=>x+','+y;
+  for (let x=0; x<size; x++){
+    let conns = 0;
+    if (x>0) conns |= bit(3);
+    if (x<size-1) conns |= bit(1);
+    cells.set(key(x,y), {x, y, conns});
+  }
+  return { cells, source:{x:0,y}, bulbs:[{x:size-1,y}], size, total:size };
+}
+
+function fillBoardWithDecoys(levelData, rng){
+  const size = levelData.size;
+  const occupied = new Set();
+  for (const t of levelData.tiles) occupied.add(t.x+','+t.y);
+
+  const types = ['straight','corner','tee','straight','corner'];
+
+  for (let y = 0; y < size; y++){
+    for (let x = 0; x < size; x++){
+      if (occupied.has(x+','+y)) continue;
+      const type = types[Math.floor(rng()*types.length)];
+      const canonical = type === 'straight' ? 5
+                      : type === 'corner'   ? 3 : 7;
+      const rot = Math.floor(rng()*4);
+      levelData.tiles.push({
+        x, y,
+        mask: canonical, type, canonical,
+        rotatable: true,
+        correctRots: [0,1,2,3],
+        rot,
+        _vis: rot*90,
+        _lit: null, _litAny: null,
+        _decoy: true
+      });
+    }
+  }
+}
+
+function generateLevel(levelNum){
+  const rng = mulberry32(levelNum*7919 + 104729);
+
+  const size = levelNum <= 3  ? 4
+             : levelNum <= 10 ? 5
+             : levelNum <= 22 ? 6
+             : levelNum <= 36 ? 7
+             : 8;
+  const bulbCount = levelNum <= 5  ? 1
+                  : levelNum <= 18 ? 2
+                  : 3;
+  const targetLen = Math.max(5, Math.min(
+    Math.floor(size*size*0.55),
+    4 + Math.floor(levelNum*0.85)
+  ));
+
+  let best = null;
+  const tries = levelNum > 30 ? 150 : 80;
+  for (let a=0; a<tries; a++){
+    const res = buildCandidate(size, bulbCount, targetLen, rng);
+    if (res && (!best || res.total > best.total)) best = res;
+    if (best && best.total >= targetLen) break;
+  }
+  if (!best) best = buildCandidate(size, 1, 4, rng) || makeFallbackLevel(size);
+
+  const key = (x,y)=>x+','+y;
+  const bulbSet = new Set(best.bulbs.map(b=>key(b.x,b.y)));
+  const tiles = [];
+
+  for (const [k, c] of best.cells){
+    const isSrc = (c.x===best.source.x && c.y===best.source.y);
+    let type, canonical, rotatable = true;
+
+    if (isSrc){ type='source'; canonical=c.conns; rotatable=false; }
+    else if (bulbSet.has(k)){ type='bulb'; canonical=c.conns; rotatable=false; }
+    else {
+      const n = popcount(c.conns);
+      if (n===2){
+        type = (c.conns===5 || c.conns===10) ? 'straight' : 'corner';
+        canonical = type==='straight' ? 5 : 3;
+      } else if (n===3){ type='tee'; canonical=7; }
+      else if (n===4){ type='cross'; canonical=15; rotatable=false; }
+      else { type='straight'; canonical=5; }
+    }
+
+    const correctRots = [0,1,2,3].filter(r => rotMask(canonical, r) === c.conns);
+    tiles.push({
+      x:c.x, y:c.y, mask:c.conns, type, canonical,
+      rotatable, correctRots, rot:0, _vis:0, _lit:null, _litAny:null
+    });
+  }
+
+  const scrambleChance = levelNum <= 5 ? 0.7 : 1.0;
+  let par = 0;
+  for (const t of tiles){
+    if (!t.rotatable) continue;
+    const wrong = [0,1,2,3].filter(r => !t.correctRots.includes(r));
+    if (wrong.length && rng() < scrambleChance){
+      t.rot = wrong[Math.floor(rng()*wrong.length)];
+    } else {
+      t.rot = t.correctRots[0];
+    }
+    let taps = 9;
+    for (const cr of t.correctRots) taps = Math.min(taps, (cr - t.rot + 4) % 4);
+    par += taps;
+    t._vis = t.rot * 90;
+  }
+  if (par === 0){
+    const t = tiles.find(t => t.rotatable && t.correctRots.length < 4);
+    if (t){ t.rot = (t.rot + 1) % 4; t._vis = t.rot*90; par = 1; }
+  }
+
+  fillBoardWithDecoys({ size: best.size, tiles }, rng);
+
+  const moveLimit = par + Math.max(3, Math.ceil(par * 0.3));
+
+  return { size: best.size, tiles, par, bulbCount, moveLimit };
+}
+
+/* ============================================================
+   РИСОВАНИЕ
+   ============================================================ */
+function drawPipeShape(g, mask, r, width, color, alpha){
+  g.lineStyle(width, color, alpha);
+  g.fillStyle(color, alpha);
+  for (let d=0; d<4; d++){
+    if (!(mask & bit(d))) continue;
+    const dx = DIRS[d].dx, dy = DIRS[d].dy;
+    g.beginPath(); g.moveTo(0,0); g.lineTo(dx*r, dy*r); g.strokePath();
+    g.fillCircle(dx*r, dy*r, width/2);
+  }
+  g.fillCircle(0, 0, width/2);
+}
+
+function drawBulbGfx(g, cell, lit){
+  g.clear();
+  const r = cell*0.15;
+  if (lit){
+    g.fillStyle(0xffb545, 0.09); g.fillCircle(0,0,r*3.0);
+    g.fillStyle(0xffd97a, 0.16); g.fillCircle(0,0,r*2.0);
+    g.fillStyle(0xfff0bb, 0.34); g.fillCircle(0,0,r*1.35);
+    g.fillStyle(0xfffdf0, 1);    g.fillCircle(0,0,r*0.80);
+  } else {
+    g.fillStyle(0x0f1828, 1);    g.fillCircle(0,0,r*1.15);
+    g.lineStyle(Math.max(2, cell*0.028), 0x3a5480, 1);
+    g.strokeCircle(0,0,r*1.15);
+    g.fillStyle(0x2a3d63, 1);    g.fillCircle(0,0,r*0.45);
+  }
+}
+
+function drawSourceGfx(g, cell){
+  g.clear();
+  const r = cell*0.13;
+  g.fillStyle(0xffb545, 0.09); g.fillCircle(0,0,r*3.2);
+  g.fillStyle(0xffd97a, 0.18); g.fillCircle(0,0,r*2.1);
+  g.fillStyle(0xfff3c4, 1);    g.fillCircle(0,0,r*1.10);
+  g.fillStyle(0xffffff, 1);    g.fillCircle(0,0,r*0.60);
+}
+
+function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
+  const c = scene.add.container(x, y);
+  const g = scene.add.graphics();
+  g.fillStyle(color, 1);
+  g.fillRoundedRect(-w/2, -h/2, w, h, h/2);
+  g.lineStyle(2, 0x3b5a92, 0.55);
+  g.strokeRoundedRect(-w/2, -h/2, w, h, h/2);
+  const t = scene.add.text(0, 0, label, {
+    fontFamily: FONT, fontSize: (fontSize||28)+'px', color:'#dbe7ff', fontStyle:'bold'
+  }).setOrigin(0.5);
+  c.add([g, t]);
+  c.labelText = t;
+  c.setSize(w, h);
+  c.setInteractive({ useHandCursor:true });
+  c.on('pointerdown', () => {
+    Sound.init(); Sound.ui();
+    scene.tweens.add({ targets:c, scale:0.94, duration:70, yoyo:true });
+    onClick();
+  });
+  return c;
+}
+
+/* ============================================================
+   РЕКЛАМА
+   ============================================================ */
+const Ads = {
+  played: 0,
+  interstitial(){
+    Ads.played++;
+    if (Ads.played % 4 !== 0) return;
+    // if (window.ysdk) window.ysdk.adv.showFullscreenAdv({});
+  },
+  rewarded(cb){
+    // if (window.ysdk) window.ysdk.adv.showRewardedVideo({ callbacks:{ onRewarded: cb } });
+    cb();
+  }
+};
+
+/* ============================================================
+   МЕНЮ
+   ============================================================ */
+class MenuScene extends Phaser.Scene {
+  constructor(){ super('menu'); }
+
+  create(){
+    const save = loadSave();
+    Sound.on = save.sound;
+    CURRENT_LANG = save.lang || 'en';
+
+    const g = this.add.graphics();
+    g.fillGradientStyle(0x0b1122, 0x0b1122, 0x151f3c, 0x151f3c, 1);
+    g.fillRect(0, 0, W, H);
+    const rnd = mulberry32(99);
+    for (let i=0; i<90; i++){
+      g.fillStyle(0xaac4ff, 0.05 + rnd()*0.18);
+      g.fillCircle(rnd()*W, rnd()*H, 1 + rnd()*1.8);
+    }
+    for (let i=10; i>0; i--){
+      g.fillStyle(0x2a4a8a, 0.010);
+      g.fillCircle(W/2, 300, 90 + i*40);
+    }
+
+    for (let i=0; i<28; i++){
+      const sx = rnd()*W, sy = rnd()*H, sr = 1 + rnd()*1.6;
+      const st = this.add.circle(sx, sy, sr, 0xcfe0ff, 0.15 + rnd()*0.5)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: st, alpha: { from: st.alpha*0.15, to: st.alpha },
+        duration: 1100 + rnd()*2400, yoyo: true, repeat: -1, delay: rnd()*1600,
+        ease: 'Sine.easeInOut'
+      });
+    }
+
+    /* --- Заголовок --- */
+    const title = this.add.text(W/2, 130, 'LUMEN GARDEN', {
+      fontFamily: FONT, fontSize: '56px', color: '#eaf2ff', fontStyle: 'bold',
+      letterSpacing: 2
+    }).setOrigin(0.5);
+    this.tweens.add({
+      targets: title, scale: { from: 1, to: 1.025 },
+      duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
+
+    this.add.text(W/2, 200, L('subtitle'), {
+      fontFamily: FONT, fontSize: '22px', color: '#7d97c4'
+    }).setOrigin(0.5);
+
+    /* --- Версия --- */
+    this.add.text(W-24, H-24, 'v' + VERSION, {
+      fontFamily: FONT, fontSize: '18px', color: '#3a5480'
+    }).setOrigin(1, 1);
+
+    /* --- Кнопка выхода на портал --- */
+    makeButton(this, 80, 96, 118, 52, L('backSite'), 0x1d2c4d,
+      () => exitToPortal(PORTAL_URL), 20);
+
+    /* --- Языковой переключатель (сдвинут правее) --- */
+    const langStyleActive   = { fontFamily: FONT, fontSize: '26px', color: '#8fb4ee', fontStyle: 'bold' };
+    const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
+
+    const langBtnRU = this.add.text(190, 96, 'RU', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+    const langBtnEN = this.add.text(240, 96, 'EN', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+
+    langBtnRU.setColor(CURRENT_LANG === 'ru' ? '#8fb4ee' : '#3a4a68');
+    langBtnEN.setColor(CURRENT_LANG === 'en' ? '#8fb4ee' : '#3a4a68');
+
+    langBtnRU.on('pointerdown', () => {
+      if (CURRENT_LANG === 'ru') return;
+      Sound.init(); Sound.ui();
+      CURRENT_LANG = 'ru';
+      const s = loadSave(); s.lang = 'ru'; writeSave(s);
+      this.scene.restart();
+    });
+    langBtnEN.on('pointerdown', () => {
+      if (CURRENT_LANG === 'en') return;
+      Sound.init(); Sound.ui();
+      CURRENT_LANG = 'en';
+      const s = loadSave(); s.lang = 'en'; writeSave(s);
+      this.scene.restart();
+    });
+
+    /* --- Кнопка звука --- */
+    const sBtn = this.add.text(W-64, 96, Sound.on ? '♪' : '✕', {
+      fontFamily: FONT, fontSize: '44px',
+      color: Sound.on ? '#8fb4ee' : '#3a4a68', fontStyle: 'bold'
+    }).setOrigin(0.5).setInteractive({ useHandCursor:true });
+    sBtn.on('pointerdown', () => {
+      Sound.init();
+      Sound.on = !Sound.on;
+      const s = loadSave(); s.sound = Sound.on; writeSave(s);
+      sBtn.setText(Sound.on ? '♪' : '✕');
+      sBtn.setColor(Sound.on ? '#8fb4ee' : '#3a4a68');
+      if (Sound.on) Sound.ui();
+    });
+
+    /* --- Главная кнопка --- */
+    const playLabel = save.max > 1
+      ? L('continue') + ' · ' + Math.min(save.max, LEVELS_TOTAL)
+      : L('play');
+    makeButton(this, W/2, 300, 340, 96, playLabel, 0x2f5fa8, () => {
+      this.scene.start('game', { level: Math.min(save.max, LEVELS_TOTAL) });
+    }, 34);
+
+    this.add.text(W/2, 410, L('levels'), {
+      fontFamily: FONT, fontSize: '24px', color: '#5f7aa8', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    /* --- Сетка уровней --- */
+    const cols = 6, bw = 76, gap = 14, dy = 88;
+    const x0 = (W - (cols*bw + (cols-1)*gap))/2 + bw/2;
+    const y0 = 500;
+
+    const rankColor = { S:'#ffd54f', A:'#7fd4ff', B:'#a9e07a', C:'#8899aa' };
+
+    for (let i=1; i<=LEVELS_TOTAL; i++){
+      const col = (i-1) % cols;
+      const row = Math.floor((i-1)/cols);
+      const x = x0 + col*(bw+gap);
+      const y = y0 + row*dy;
+      const unlocked = i <= save.max;
+      const stars = save.stars[i] || 0;
+      const rank  = save.ranks[i];
+
+      const btn = this.add.container(x, y);
+      const bg = this.add.graphics();
+      bg.fillStyle(unlocked ? 0x1b2a4a : 0x121a2c, 1);
+      bg.fillRoundedRect(-bw/2, -bw/2, bw, bw, 18);
+      bg.lineStyle(2, unlocked ? 0x3a5a92 : 0x1e2a42, 1);
+      bg.strokeRoundedRect(-bw/2, -bw/2, bw, bw, 18);
+
+      const num = this.add.text(0, -8, String(i), {
+        fontFamily: FONT, fontSize: '28px',
+        color: unlocked ? '#dbe7ff' : '#3a4a68', fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      const st = this.add.text(0, 20, stars ? '★'.repeat(stars) : '', {
+        fontFamily: FONT, fontSize: '14px', color: '#ffcf6b'
+      }).setOrigin(0.5);
+
+      btn.add([bg, num, st]);
+
+      if (rank){
+        const rk = this.add.text(bw/2 - 8, -bw/2 + 8, rank, {
+          fontFamily: FONT, fontSize: '18px',
+          color: rankColor[rank] || '#8899aa', fontStyle: 'bold'
+        }).setOrigin(1, 0);
+        btn.add(rk);
+      }
+
+      btn.setSize(bw, bw);
+
+      if (unlocked){
+        btn.setInteractive({ useHandCursor:true });
+        btn.on('pointerdown', () => {
+          Sound.init(); Sound.ui();
+          this.tweens.add({ targets:btn, scale:0.9, duration:70, yoyo:true });
+          this.scene.start('game', { level: i });
+        });
+      }
+    }
+  }
+}
+
+/* ============================================================
+   ИГРА
+   ============================================================ */
+class GameScene extends Phaser.Scene {
+  constructor(){ super('game'); }
+
+  init(data){
+    this.levelNum = (data && data.level) || 1;
+  }
+
+  create(){
+    this.solved       = false;
+    this.failed       = false;
+    this.moves        = 0;
+    this.hintUses     = 2;
+    this.reviveUsed   = false;
+    this._dangerPulse = false;
+    this._lastDangerLevel = 0;
+    this.tiles        = [];
+    this.tileMap      = {};
+    this.levelData    = generateLevel(this.levelNum);
+    this.movesLeft    = this.levelData.moveLimit;
+
+    this.buildBackground();
+    this.buildBoard();
+    this.buildHUD();
+    this.updateLight();
+
+    this.cameras.main.fadeIn(200, 7, 10, 18);
+  }
+
+  buildBackground(){
+    const g = this.add.graphics();
+    g.fillGradientStyle(0x0b1122, 0x0b1122, 0x151f3c, 0x151f3c, 1);
+    g.fillRect(0, 0, W, H);
+    const rnd = mulberry32(this.levelNum * 331 + 7);
+    for (let i=0; i<70; i++){
+      g.fillStyle(0xaac4ff, 0.04 + rnd()*0.16);
+      g.fillCircle(rnd()*W, rnd()*H, 1 + rnd()*1.8);
+    }
+    for (let i=10; i>0; i--){
+      g.fillStyle(0x2a4a8a, 0.011);
+      g.fillCircle(W/2, 660, 120 + i*40);
+    }
+    for (let i=0; i<24; i++){
+      const st = this.add.circle(rnd()*W, rnd()*H, 1 + rnd()*1.6,
+                                0xcfe0ff, 0.12 + rnd()*0.45)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: st, alpha: { from: st.alpha*0.15, to: st.alpha },
+        duration: 1200 + rnd()*2400, yoyo: true, repeat: -1,
+        delay: rnd()*1700, ease: 'Sine.easeInOut'
+      });
+    }
+  }
+
+  buildBoard(){
+    const size = this.levelData.size;
+    const cell = Math.min(132, 620/size);
+    const bw   = cell*size;
+    const bx   = (W - bw)/2;
+    const by   = 660 - bw/2;
+
+    this.cell   = cell;
+    this.boardX = bx;
+    this.boardY = by;
+
+    const pad = 18;
+    const panel = this.add.graphics();
+    panel.fillStyle(0x0e1729, 0.85);
+    panel.fillRoundedRect(bx-pad, by-pad, bw+pad*2, bw+pad*2, 28);
+    panel.lineStyle(2, 0x22335a, 0.9);
+    panel.strokeRoundedRect(bx-pad, by-pad, bw+pad*2, bw+pad*2, 28);
+
+    for (const t of this.levelData.tiles){
+      const px = bx + (t.x + 0.5)*cell;
+      const py = by + (t.y + 0.5)*cell;
+      const cont = this.add.container(px, py);
+      cont.setAngle(t._vis);
+
+      const gap  = cell*0.06;
+      const base = this.add.graphics();
+      base.fillStyle(t.type === 'source' ? 0x1a2740 : 0x141e33, 1);
+      base.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
+      base.lineStyle(2, 0x233257, 1);
+      base.strokeRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
+      cont.add(base);
+
+      const glow = this.add.graphics();
+      glow.fillStyle(0xffb545, 1);
+      glow.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
+      glow.setAlpha(0);
+      cont.add(glow);
+      t._glow = glow;
+
+      const pipe = this.add.graphics();
+      drawPipeShape(pipe, t.canonical, cell*0.5, cell*0.13, 0x2e4270, 1);
+      cont.add(pipe);
+
+      if (t.type === 'bulb'){
+        const halo = this.add.circle(0, 0, cell*0.32, 0xffb545, 0)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        cont.add(halo);
+        t._halo = halo;
+
+        const bg = this.add.graphics();
+        drawBulbGfx(bg, cell, false);
+        cont.add(bg);
+        t._bulbG = bg;
+      } else if (t.type === 'source'){
+        const sg = this.add.graphics();
+        drawSourceGfx(sg, cell);
+        cont.add(sg);
+        this.tweens.add({
+          targets: sg, alpha: { from: 1, to: 0.65 },
+          duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+      }
+
+      cont.setInteractive(new Phaser.Geom.Rectangle(-cell/2, -cell/2, cell, cell),
+                          Phaser.Geom.Rectangle.Contains);
+      cont.on('pointerdown', () => this.onTileTap(t));
+
+      const d = Math.abs(t.x - (size-1)/2) + Math.abs(t.y - (size-1)/2);
+      cont.setScale(0.001);
+      this.tweens.add({
+        targets: cont, scale: 1, duration: 320,
+        delay: 220 + d*45, ease: 'Back.easeOut'
+      });
+
+      t._cont = cont;
+      this.tileMap[t.x+','+t.y] = t;
+      this.tiles.push(t);
+    }
+
+    this.lightGfx = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  buildHUD(){
+    /* Кнопка «‹» — назад в меню игры */
+    const back = this.add.text(70, 96, '‹', {
+      fontFamily: FONT, fontSize: '52px', color: '#7d97c4'
+    }).setOrigin(0.5).setInteractive({ useHandCursor:true });
+    back.on('pointerdown', () => { Sound.ui(); this.scene.start('menu'); });
+
+    /* Кнопка «← Сайт» — прямой выход на портал */
+    makeButton(this, 200, 96, 110, 44, L('backSite'), 0x1d2c4d,
+      () => exitToPortal(PORTAL_URL), 18);
+
+    this.add.text(W/2, 96, L('level') + ' ' + this.levelNum, {
+      fontFamily: FONT, fontSize: '40px', color: '#e6efff', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.movesText = this.add.text(W/2, 152, '', {
+      fontFamily: FONT, fontSize: '25px', color: '#6f89b8'
+    }).setOrigin(0.5);
+    this.refreshMovesText();
+
+    this.bulbsText = this.add.text(W/2, 200, '', {
+      fontFamily: FONT, fontSize: '24px', color: '#8a6a3a'
+    }).setOrigin(0.5);
+
+    makeButton(this, 240, 1175, 200, 86, L('restart'), 0x1d2c4d,
+      () => this.scene.restart({ level: this.levelNum }), 28);
+
+    this.hintBtn = makeButton(this, 482, 1175, 230, 86,
+      L('hint') + ' ×' + this.hintUses, 0x2b4a7a,
+      () => Ads.rewarded(() => this.doHint()), 24);
+  }
+
+  refreshMovesText(){
+    const d = this.levelData;
+    this.movesText.setText(
+      L('moves') + ': ' + this.moves + ' / ' + d.moveLimit +
+      '   ·   ' + L('min') + ': ' + d.par
+    );
+    const danger = this.movesLeft <= 3 && this.movesLeft > 0;
+    this.movesText.setColor(danger ? '#ff7070' : '#6f89b8');
+
+    if (danger){
+      if (!this._dangerPulse){
+        this._dangerPulse = true;
+        this.tweens.add({
+          targets: this.movesText, scale: { from: 1, to: 1.06 },
+          duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+      }
+      if (this._lastDangerLevel !== this.movesLeft){
+        this._lastDangerLevel = this.movesLeft;
+        Sound.warn();
+      }
+    } else {
+      if (this._dangerPulse){
+        this._dangerPulse = false;
+        this.tweens.killTweensOf(this.movesText);
+        this.movesText.setScale(1);
+      }
+    }
+  }
+
+  ripple(t){
+    const px = t._cont.x, py = t._cont.y, c = this.cell;
+
+    const ring = this.add.circle(px, py, c*0.16)
+      .setStrokeStyle(3, 0xffd98a, 0.9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring, scale: 2.6, alpha: 0,
+      duration: 430, ease: 'Cubic.easeOut', onComplete: () => ring.destroy()
+    });
+
+    for (let i=0; i<7; i++){
+      const a = Math.random()*Math.PI*2;
+      const dist = c*(0.25 + Math.random()*0.38);
+      const s = this.add.circle(
+        px + Math.cos(a)*c*0.12,
+        py + Math.sin(a)*c*0.12,
+        c*0.035, 0xfff0bb
+      ).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.95);
+
+      this.tweens.add({
+        targets: s,
+        x: px + Math.cos(a)*dist,
+        y: py + Math.sin(a)*dist,
+        alpha: 0, scale: 0.2,
+        duration: 320 + Math.random()*240,
+        ease: 'Cubic.easeOut',
+        onComplete: () => s.destroy()
+      });
+    }
+  }
+
+  onTileTap(t){
+    if (this.solved || this.failed) return;
+    Sound.init();
+
+    if (!t.rotatable){
+      Sound.locked();
+      this.tweens.add({
+        targets: t._cont, x: t._cont.x + 5,
+        duration: 45, yoyo: true, repeat: 1, ease: 'Sine.easeInOut'
+      });
+      return;
+    }
+
+    if (this.movesLeft <= 0){
+      Sound.locked();
+      return;
+    }
+
+    Sound.tap();
+    this.ripple(t);
+
+    t.rot = (t.rot + 1) % 4;
+    t._vis += 90;
+    this.moves++;
+    this.movesLeft--;
+    this.refreshMovesText();
+
+    this.tweens.killTweensOf(t._cont);
+    this.tweens.add({
+      targets: t._cont,
+      angle: t._vis,
+      duration: 190,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.updateLight();
+        this.checkFail();
+      }
+    });
+    this.tweens.add({
+      targets: t._cont,
+      scale: { from: 1, to: 0.92 },
+      duration: 85, yoyo: true, ease: 'Sine.easeOut'
+    });
+  }
+
+  doHint(){
+    if (this.solved || this.failed) return;
+    if (this.hintUses <= 0){
+      Sound.locked();
+      return;
+    }
+    this.hintUses--;
+    this.hintBtn.labelText.setText(L('hint') + ' ×' + this.hintUses);
+
+    const t = this.levelData.tiles.find(
+      x => x.rotatable && !x._decoy && !x.correctRots.includes(x.rot)
+    );
+    if (!t) return;
+
+    Sound.hint();
+
+    let bestR = t.rot, bestD = 9;
+    for (const cr of t.correctRots){
+      const d = (cr - t.rot + 4) % 4;
+      if (d < bestD){ bestD = d; bestR = cr; }
+    }
+
+    const ring = this.add.circle(t._cont.x, t._cont.y, this.cell*0.55)
+      .setStrokeStyle(3, 0xffd36b, 1)
+      .setAlpha(0.9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: ring, alpha: 0, scale: 1.5,
+      duration: 700, onComplete: () => ring.destroy() });
+
+    this.tweens.killTweensOf(t._cont);
+    t.rot = bestR;
+    t._vis += bestD * 90;
+    this.tweens.add({
+      targets: t._cont,
+      angle: t._vis,
+      duration: 130*bestD + 60,
+      ease: 'Cubic.easeInOut',
+      onComplete: () => this.updateLight()
+    });
+  }
+
+  checkFail(){
+    if (this.solved || this.failed) return;
+    if (this.movesLeft <= 0){
+      this.failed = true;
+      this.time.delayedCall(380, () => this.showFail());
+    }
+  }
+
+  updateLight(){
+    const size = this.levelData.size;
+    const cell = this.cell, bx = this.boardX, by = this.boardY;
+
+    const src = this.levelData.tiles.find(t => t.type === 'source');
+    const srcKey = src.x+','+src.y;
+
+    const lit = new Set([srcKey]);
+    const visited = new Set([srcKey]);
+    const segs = [];
+    const q = [];
+
+    const sm = rotMask(src.canonical, src.rot);
+    for (let d=0; d<4; d++) if (sm & bit(d)) q.push({ x:src.x, y:src.y, d });
+
+    while (q.length){
+      const s = q.pop();
+      const nx = s.x + DIRS[s.d].dx, ny = s.y + DIRS[s.d].dy;
+      if (nx<0 || ny<0 || nx>=size || ny>=size) continue;
+
+      const nt = this.tileMap[nx+','+ny];
+      if (!nt) continue;
+
+      const nm = rotMask(nt.canonical, nt.rot);
+      if (!(nm & bit(opp(s.d)))) continue;
+
+      segs.push(s);
+
+      const k = nx+','+ny;
+      if (visited.has(k)) continue;
+      visited.add(k);
+      lit.add(k);
+
+      for (let d2=0; d2<4; d2++){
+        if (d2 === opp(s.d)) continue;
+        if (nm & bit(d2)) q.push({ x:nx, y:ny, d:d2 });
+      }
+    }
+
+    const gfx = this.lightGfx;
+    gfx.clear();
+
+    const passes = [
+      { w:0.30, c:0xff9d2e, a:0.06 },
+      { w:0.20, c:0xffb545, a:0.12 },
+      { w:0.12, c:0xffd98a, a:0.28 },
+      { w:0.055, c:0xfff8e0, a:0.95 }
+    ];
+    for (const p of passes){
+      gfx.lineStyle(cell*p.w, p.c, p.a);
+      gfx.fillStyle(p.c, p.a);
+      for (const s of segs){
+        const x1 = bx + (s.x+0.5)*cell, y1 = by + (s.y+0.5)*cell;
+        const x2 = x1 + DIRS[s.d].dx*cell, y2 = y1 + DIRS[s.d].dy*cell;
+        gfx.beginPath(); gfx.moveTo(x1,y1); gfx.lineTo(x2,y2); gfx.strokePath();
+        gfx.fillCircle(x2, y2, cell*p.w*0.5);
+      }
+    }
+
+    for (const t of this.levelData.tiles){
+      const isLit = lit.has(t.x+','+t.y);
+      if (isLit !== t._litAny){
+        t._litAny = isLit;
+        if (t._glow){
+          this.tweens.killTweensOf(t._glow);
+          this.tweens.add({ targets: t._glow, alpha: isLit ? 0.15 : 0, duration: 220 });
+        }
+      }
+    }
+
+    let litCount = 0, total = 0;
+    for (const t of this.levelData.tiles){
+      if (t.type !== 'bulb') continue;
+      total++;
+      const isLit = lit.has(t.x+','+t.y);
+      if (isLit) litCount++;
+      if (isLit !== t._lit){
+        t._lit = isLit;
+        drawBulbGfx(t._bulbG, cell, isLit);
+
+        if (t._halo){
+          this.tweens.killTweensOf(t._halo);
+          if (isLit){
+            t._halo.setAlpha(0.30).setScale(1);
+            this.tweens.add({
+              targets: t._halo, alpha: 0.10, scale: 1.18,
+              duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+            });
+            this.tweens.add({
+              targets: t._cont, scale: { from: 1.09, to: 1 },
+              duration: 340, ease: 'Back.easeOut'
+            });
+          } else {
+            t._halo.setAlpha(0).setScale(1);
+          }
+        }
+
+        if (isLit){ this.bloom(t); Sound.lit(); }
+      }
+    }
+
+    if (this.bulbsText){
+      this.bulbsText.setText(L('buds') + ': ' + litCount + ' / ' + total);
+      this.bulbsText.setColor(litCount === total ? '#ffcf6b' : '#7a6647');
+    }
+
+    if (litCount === total && total > 0 && !this.solved && !this.failed){
+      this.solved = true;
+      this.time.delayedCall(520, () => this.showWin());
+    }
+  }
+
+  bloom(t){
+    const px = this.boardX + (t.x+0.5)*this.cell;
+    const py = this.boardY + (t.y+0.5)*this.cell;
+    for (let i=0; i<12; i++){
+      const a    = Math.random()*Math.PI*2;
+      const dist = this.cell*(0.4 + Math.random()*0.7);
+      const c = this.add.circle(px, py, this.cell*0.05, 0xffe9b0)
+        .setAlpha(0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: c,
+        x: px + Math.cos(a)*dist,
+        y: py + Math.sin(a)*dist,
+        alpha: 0,
+        scale: 0.2,
+        duration: 500 + Math.random()*400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => c.destroy()
+      });
+    }
+    const flash = this.add.circle(px, py, this.cell*0.5, 0xfff3c4, 0.5)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: 2.2,
+      duration: 500, ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy()
+    });
+  }
+
+  confetti(){
+    const colors = [0xffcf6b, 0xffb545, 0x7fd4ff, 0xa9e07a, 0xff8fb0, 0xfff0bb];
+    for (let i=0; i<80; i++){
+      const w = 6 + Math.random()*8, h = 4 + Math.random()*5;
+      const c = this.add.rectangle(
+        Math.random()*W, -20 - Math.random()*260,
+        w, h, colors[i % colors.length]
+      ).setDepth(999).setAlpha(0.95);
+
+      this.tweens.add({
+        targets: c,
+        y: H + 60,
+        x: c.x + (Math.random()-0.5)*240,
+        angle: 360 * (Math.random() < 0.5 ? 1 : -1),
+        alpha: { from: 0.95, to: 0.6 },
+        duration: 1800 + Math.random()*1700,
+        delay: Math.random()*650,
+        ease: 'Cubic.easeIn',
+        onComplete: () => c.destroy()
+      });
+    }
+  }
+
+  showWin(){
+    const par = this.levelData.par;
+
+    let rank, stars;
+    if      (this.moves <= par)                              { rank = 'S'; stars = 3; }
+    else if (this.moves <= par + Math.ceil(par * 0.1))       { rank = 'A'; stars = 2; }
+    else if (this.moves <= par + Math.ceil(par * 0.25))      { rank = 'B'; stars = 1; }
+    else                                                     { rank = 'C'; stars = 1; }
+
+    saveWin(this.levelNum, stars, this.moves, rank);
+    Ads.interstitial();
+
+    Sound.win();
+    this.cameras.main.flash(260, 255, 220, 150);
+    this.cameras.main.shake(320, 0.006);
+    this.confetti();
+
+    const overlay = this.add.container(0, 0).setDepth(1000);
+
+    const dim = this.add.graphics();
+    dim.fillStyle(0x03060d, 0.78);
+    dim.fillRect(0, 0, W, H);
+    overlay.add(dim);
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x14203a, 0.98);
+    panel.fillRoundedRect(W/2-260, 380, 520, 540, 32);
+    panel.lineStyle(3, 0x3b5a92, 0.9);
+    panel.strokeRoundedRect(W/2-260, 380, 520, 540, 32);
+    overlay.add(panel);
+
+    overlay.add(this.add.text(W/2, 435, L('levelComplete'), {
+      fontFamily: FONT, fontSize: '36px', color: '#eaf2ff', fontStyle: 'bold'
+    }).setOrigin(0.5));
+
+    const rankColor = { S: '#ffd54f', A: '#7fd4ff', B: '#a9e07a', C: '#8899aa' };
+    const rankLabel = {
+      S: L('rankS'), A: L('rankA'), B: L('rankB'), C: L('rankC')
+    };
+    const rankText = this.add.text(W/2, 525, rank, {
+      fontFamily: FONT, fontSize: '72px',
+      color: rankColor[rank], fontStyle: 'bold'
+    }).setOrigin(0.5);
+    rankText.setScale(0);
+    overlay.add(rankText);
+    this.tweens.add({
+      targets: rankText, scale: 1,
+      duration: 420, delay: 150, ease: 'Back.easeOut'
+    });
+    overlay.add(this.add.text(W/2, 585, rankLabel[rank], {
+      fontFamily: FONT, fontSize: '20px', color: rankColor[rank]
+    }).setOrigin(0.5));
+
+    for (let i=0; i<3; i++){
+      const sx = W/2 + (i-1)*70, sy = 665;
+      const star = this.add.text(sx, sy, '★', {
+        fontFamily: FONT, fontSize: '60px',
+        color: i < stars ? '#ffcf6b' : '#2a3a56'
+      }).setOrigin(0.5);
+      overlay.add(star);
+      if (i < stars){
+        star.setScale(0);
+        this.tweens.add({
+          targets: star, scale: 1,
+          duration: 380, delay: 320 + i*160, ease: 'Back.easeOut'
+        });
+      }
+    }
+
+    overlay.add(this.add.text(W/2, 745,
+      L('movesLower') + ': ' + this.moves + '   (' + L('minimum') + ' ' + par + ')', {
+      fontFamily: FONT, fontSize: '24px', color: '#7d97c4'
+    }).setOrigin(0.5));
+
+    const best = loadSave().best[this.levelNum];
+    if (best && best < this.moves){
+      overlay.add(this.add.text(W/2, 780,
+        L('best') + ': ' + best, {
+        fontFamily: FONT, fontSize: '20px', color: '#5f7aa8'
+      }).setOrigin(0.5));
+    }
+
+    const isLast = this.levelNum >= LEVELS_TOTAL;
+    const nextLabel  = isLast ? L('toMenu') : L('next');
+    const nextAction = isLast
+      ? () => this.scene.start('menu')
+      : () => this.scene.start('game', { level: this.levelNum + 1 });
+
+    overlay.add(makeButton(this, W/2, 830, 300, 86, nextLabel, 0x2f5fa8, nextAction, 32));
+    overlay.add(makeButton(this, W/2, 920, 260, 70, L('toLevels'), 0x1d2c4d, () => {
+      this.scene.start('menu');
+    }, 24));
+
+    overlay.setAlpha(0);
+    this.tweens.add({ targets: overlay, alpha: 1, duration: 250 });
+  }
+
+  showFail(){
+    Sound.fail();
+    this.cameras.main.shake(300, 0.012);
+    this.cameras.main.flash(300, 120, 30, 40);
+
+    for (const t of this.levelData.tiles){
+      if (t._glow){
+        this.tweens.killTweensOf(t._glow);
+        this.tweens.add({ targets: t._glow, alpha: 0, duration: 300 });
+      }
+      if (t._halo) {
+        this.tweens.killTweensOf(t._halo);
+        this.tweens.add({ targets: t._halo, alpha: 0, duration: 300 });
+      }
+      if (t._cont){
+        this.tweens.add({ targets: t._cont, alpha: 0.55, duration: 300 });
+      }
+    }
+
+    const overlay = this.add.container(0, 0).setDepth(1000);
+
+    const dim = this.add.graphics();
+    dim.fillStyle(0x1a0508, 0.82);
+    dim.fillRect(0, 0, W, H);
+    overlay.add(dim);
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1a0f12, 0.98);
+    panel.fillRoundedRect(W/2-260, 400, 520, 500, 32);
+    panel.lineStyle(3, 0x7a2a3a, 0.9);
+    panel.strokeRoundedRect(W/2-260, 400, 520, 500, 32);
+    overlay.add(panel);
+
+    overlay.add(this.add.text(W/2, 470, L('withered'), {
+      fontFamily: FONT, fontSize: '46px', color: '#ff7a8a', fontStyle: 'bold'
+    }).setOrigin(0.5));
+
+    overlay.add(this.add.text(W/2, 540, L('outOfMoves'), {
+      fontFamily: FONT, fontSize: '26px', color: '#b0707e'
+    }).setOrigin(0.5));
+
+    overlay.add(this.add.text(W/2, 590,
+      L('movesLower') + ': ' + this.moves + ' / ' + this.levelData.moveLimit, {
+      fontFamily: FONT, fontSize: '22px', color: '#8a6070'
+    }).setOrigin(0.5));
+
+    if (!this.reviveUsed){
+      const reviveBtn = makeButton(this, W/2, 690, 380, 88,
+        '▶ ' + L('adReward'), 0x6a3a48,
+        () => {
+          Ads.rewarded(() => {
+            this.reviveUsed = true;
+            this.failed = false;
+            this.movesLeft += 5;
+            this.refreshMovesText();
+            Sound.ui();
+            for (const t of this.levelData.tiles){
+              if (t._cont) this.tweens.add({ targets: t._cont, alpha: 1, duration: 200 });
+            }
+            this.updateLight();
+            overlay.destroy();
+          });
+        }, 24);
+      overlay.add(reviveBtn);
+    }
+
+    overlay.add(makeButton(this, W/2, 795, 300, 86, L('restart'), 0x2f5fa8, () => {
+      this.scene.restart({ level: this.levelNum });
+    }, 30));
+
+    overlay.add(makeButton(this, W/2, 885, 260, 70, L('toLevels'), 0x1d2c4d, () => {
+      this.scene.start('menu');
+    }, 24));
+
+    overlay.setAlpha(0);
+    this.tweens.add({ targets: overlay, alpha: 1, duration: 300 });
+  }
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+const config = {
+  type: Phaser.AUTO,
+  width: W,
+  height: H,
+  backgroundColor: '#070a12',
+  parent: document.body,
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [MenuScene, GameScene]
+};
+
+const _bootSave = loadSave();
+Sound.on = _bootSave.sound;
+CURRENT_LANG = _bootSave.lang || 'en';
+new Phaser.Game(config);
+
+window.addEventListener('pointerdown', () => Sound.init(), { passive: true });
+</script>
+</body>
+</html>
