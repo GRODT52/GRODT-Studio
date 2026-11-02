@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Светосад</title>
+<title>Lumen Garden v0.2.1</title>
 <style>
   html,body{margin:0;padding:0;height:100%;background:#070a12;overflow:hidden;touch-action:manipulation;}
   canvas{display:block;}
@@ -13,10 +13,13 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script>
 /* ============================================================
-   СВЕТОСАД / LUMEN GARDEN
-   Головоломка на поворот плиток. Phaser 3, один файл.
+   LUMEN GARDEN — v0.2.1
+   - Full board: all cells filled with tiles (real + decoy)
+   - Multi-language (RU / EN) with menu selector
+   - Hard move limit + S/A/B/C ranks
    ============================================================ */
 
+const VERSION = '0.2.1';
 const W = 720, H = 1280;
 const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
 const SAVE_KEY = 'svetosad_save_v1';
@@ -43,7 +46,71 @@ function mulberry32(a){
 }
 
 /* ============================================================
-   ЗВУК (WebAudio, без внешних файлов)
+   ЛОКАЛИЗАЦИЯ
+   ============================================================ */
+const LANGS = {
+  ru: {
+    subtitle:     'зажги все бутоны · не потрать лишний ход',
+    play:         'Играть',
+    continue:     'Продолжить',
+    levels:       'УРОВНИ',
+    level:        'Уровень',
+    moves:        'Ходы',
+    movesLower:   'ходов',
+    min:          'мин',
+    minimum:      'минимум',
+    buds:         'Бутоны',
+    restart:      'Заново',
+    hint:         'Подсказка',
+    levelComplete:'Уровень пройден!',
+    best:         'лучший',
+    next:         'Далее',
+    toMenu:       'В меню',
+    toLevels:     'К уровням',
+    rankS:        'ИДЕАЛЬНО',
+    rankA:        'ОТЛИЧНО',
+    rankB:        'ХОРОШО',
+    rankC:        'ПРОЙДЕНО',
+    withered:     'Сад увял',
+    outOfMoves:   'Закончились ходы',
+    adReward:     '+5 ходов (реклама)',
+  },
+  en: {
+    subtitle:     'light every bud · waste no move',
+    play:         'Play',
+    continue:     'Continue',
+    levels:       'LEVELS',
+    level:        'Level',
+    moves:        'Moves',
+    movesLower:   'moves',
+    min:          'min',
+    minimum:      'minimum',
+    buds:         'Buds',
+    restart:      'Restart',
+    hint:         'Hint',
+    levelComplete:'Level complete!',
+    best:         'best',
+    next:         'Next',
+    toMenu:       'Menu',
+    toLevels:     'Levels',
+    rankS:        'PERFECT',
+    rankA:        'GREAT',
+    rankB:        'GOOD',
+    rankC:        'CLEARED',
+    withered:     'The garden withered',
+    outOfMoves:   'Out of moves',
+    adReward:     '+5 moves (ad)',
+  }
+};
+
+let CURRENT_LANG = 'en';
+function L(key){
+  const d = LANGS[CURRENT_LANG] || LANGS.en;
+  return (d[key] != null ? d[key] : (LANGS.en[key] != null ? LANGS.en[key] : key));
+}
+
+/* ============================================================
+   ЗВУК
    ============================================================ */
 const Sound = {
   ctx: null,
@@ -78,12 +145,15 @@ const Sound = {
 
   tap(){    this.tone(430, 0.09, {type:'triangle', vol:0.09, to:700}); },
   locked(){ this.tone(150, 0.13, {type:'sawtooth', vol:0.045, to:90}); },
+  warn(){   this.tone(880, 0.10, {type:'sine', vol:0.09, to:660}); },
   hint(){   this.tone(880, 0.12, {type:'sine', vol:0.07});
             this.tone(1320, 0.18, {type:'sine', vol:0.06, delay:0.09}); },
   lit(){    [660, 880, 1108].forEach((f,i)=>
               this.tone(f, 0.22, {type:'sine', vol:0.08, delay:i*0.07})); },
   win(){    [523, 659, 784, 1046, 1318].forEach((f,i)=>
               this.tone(f, 0.38, {type:'triangle', vol:0.085, delay:i*0.1})); },
+  fail(){   [440, 330, 260, 200].forEach((f,i)=>
+              this.tone(f, 0.35, {type:'triangle', vol:0.09, delay:i*0.12})); },
   ui(){     this.tone(620, 0.06, {type:'sine', vol:0.06, to:820}); }
 };
 
@@ -97,16 +167,21 @@ function loadSave(){
   if (!s.max)   s.max = 1;
   if (!s.stars) s.stars = {};
   if (!s.best)  s.best  = {};
+  if (!s.ranks) s.ranks = {};
   if (s.sound === undefined) s.sound = true;
+  if (!s.lang)  s.lang = 'en';
   return s;
 }
 function writeSave(s){
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch(e){}
 }
-function saveWin(level, stars, moves){
+function saveWin(level, stars, moves, rank){
   const s = loadSave();
   s.stars[level] = Math.max(s.stars[level] || 0, stars);
   if (moves != null && (!s.best[level] || moves < s.best[level])) s.best[level] = moves;
+  const order = { S:4, A:3, B:2, C:1 };
+  if (rank && (!s.ranks[level] || (order[rank] || 0) > (order[s.ranks[level]] || 0)))
+    s.ranks[level] = rank;
   if (level >= s.max) s.max = level + 1;
   writeSave(s);
 }
@@ -206,14 +281,59 @@ function makeFallbackLevel(size){
   return { cells, source:{x:0,y}, bulbs:[{x:size-1,y}], size, total:size };
 }
 
+/* v0.2.1: заполняем ВСЕ пустые клетки декоративными трубами.
+   Любая их ориентация «правильная» — на победу не влияют,
+   но отнимают ходы у невнимательного игрока. */
+function fillBoardWithDecoys(levelData, rng){
+  const size = levelData.size;
+  const occupied = new Set();
+  for (const t of levelData.tiles) occupied.add(t.x+','+t.y);
+
+  const types = ['straight','corner','tee','straight','corner'];
+  let count = 0;
+
+  for (let y = 0; y < size; y++){
+    for (let x = 0; x < size; x++){
+      if (occupied.has(x+','+y)) continue;
+      const type = types[Math.floor(rng()*types.length)];
+      const canonical = type === 'straight' ? 5
+                      : type === 'corner'   ? 3 : 7;
+      const rot = Math.floor(rng()*4);
+      levelData.tiles.push({
+        x, y,
+        mask: canonical, type, canonical,
+        rotatable: true,
+        correctRots: [0,1,2,3],
+        rot,
+        _vis: rot*90,
+        _lit: null, _litAny: null,
+        _decoy: true
+      });
+      count++;
+    }
+  }
+  return count;
+}
+
 function generateLevel(levelNum){
   const rng = mulberry32(levelNum*7919 + 104729);
-  const size      = levelNum<=3  ? 4 : levelNum<=14 ? 5 : levelNum<=30 ? 6 : 7;
-  const bulbCount = levelNum<=4  ? 1 : levelNum<=18 ? 2 : 3;
-  const targetLen = Math.max(5, Math.min(Math.floor(size*size*0.55), 4 + Math.floor(levelNum*0.9)));
+
+  const size = levelNum <= 3  ? 4
+             : levelNum <= 10 ? 5
+             : levelNum <= 22 ? 6
+             : levelNum <= 36 ? 7
+             : 8;
+  const bulbCount = levelNum <= 5  ? 1
+                  : levelNum <= 18 ? 2
+                  : 3;
+  const targetLen = Math.max(5, Math.min(
+    Math.floor(size*size*0.55),
+    4 + Math.floor(levelNum*0.85)
+  ));
 
   let best = null;
-  for (let a=0; a<80; a++){
+  const tries = levelNum > 30 ? 150 : 80;
+  for (let a=0; a<tries; a++){
     const res = buildCandidate(size, bulbCount, targetLen, rng);
     if (res && (!best || res.total > best.total)) best = res;
     if (best && best.total >= targetLen) break;
@@ -267,7 +387,12 @@ function generateLevel(levelNum){
     if (t){ t.rot = (t.rot + 1) % 4; t._vis = t.rot*90; par = 1; }
   }
 
-  return { size: best.size, tiles, par, bulbCount };
+  // v0.2.1 — заполняем доску целиком
+  const decoyCount = fillBoardWithDecoys({ size: best.size, tiles }, rng);
+
+  const moveLimit = par + Math.max(3, Math.ceil(par * 0.3));
+
+  return { size: best.size, tiles, par, bulbCount, moveLimit, decoyCount };
 }
 
 /* ============================================================
@@ -321,6 +446,7 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
     fontFamily: FONT, fontSize: (fontSize||28)+'px', color:'#dbe7ff', fontStyle:'bold'
   }).setOrigin(0.5);
   c.add([g, t]);
+  c.labelText = t;
   c.setSize(w, h);
   c.setInteractive({ useHandCursor:true });
   c.on('pointerdown', () => {
@@ -332,7 +458,7 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
 }
 
 /* ============================================================
-   РЕКЛАМА (заглушка под Yandex SDK)
+   РЕКЛАМА
    ============================================================ */
 const Ads = {
   played: 0,
@@ -348,7 +474,7 @@ const Ads = {
 };
 
 /* ============================================================
-   СЦЕНА: МЕНЮ
+   МЕНЮ
    ============================================================ */
 class MenuScene extends Phaser.Scene {
   constructor(){ super('menu'); }
@@ -356,6 +482,7 @@ class MenuScene extends Phaser.Scene {
   create(){
     const save = loadSave();
     Sound.on = save.sound;
+    CURRENT_LANG = save.lang || 'en';
 
     const g = this.add.graphics();
     g.fillGradientStyle(0x0b1122, 0x0b1122, 0x151f3c, 0x151f3c, 1);
@@ -370,7 +497,6 @@ class MenuScene extends Phaser.Scene {
       g.fillCircle(W/2, 300, 90 + i*40);
     }
 
-    // мерцающие звёзды
     for (let i=0; i<28; i++){
       const sx = rnd()*W, sy = rnd()*H, sr = 1 + rnd()*1.6;
       const st = this.add.circle(sx, sy, sr, 0xcfe0ff, 0.15 + rnd()*0.5)
@@ -382,29 +508,56 @@ class MenuScene extends Phaser.Scene {
       });
     }
 
-    const title = this.add.text(W/2, 130, 'СВЕТОСАД', {
-      fontFamily: FONT, fontSize: '64px', color: '#eaf2ff', fontStyle: 'bold'
+    /* --- Заголовок --- */
+    const title = this.add.text(W/2, 130, 'LUMEN GARDEN', {
+      fontFamily: FONT, fontSize: '56px', color: '#eaf2ff', fontStyle: 'bold',
+      letterSpacing: 2
     }).setOrigin(0.5);
     this.tweens.add({
       targets: title, scale: { from: 1, to: 1.025 },
       duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
     });
 
-    this.add.text(W/2, 200, 'зажги все бутоны', {
-      fontFamily: FONT, fontSize: '26px', color: '#7d97c4'
+    this.add.text(W/2, 200, L('subtitle'), {
+      fontFamily: FONT, fontSize: '22px', color: '#7d97c4'
     }).setOrigin(0.5);
 
-    makeButton(this, W/2, 300, 340, 96,
-      save.max > 1 ? 'Продолжить · ' + Math.min(save.max, LEVELS_TOTAL) : 'Играть',
-      0x2f5fa8, () => {
-        this.scene.start('game', { level: Math.min(save.max, LEVELS_TOTAL) });
-      }, 34);
+    /* --- Версия --- */
+    this.add.text(W-24, H-24, 'v' + VERSION, {
+      fontFamily: FONT, fontSize: '18px', color: '#3a5480'
+    }).setOrigin(1, 1);
 
-    this.add.text(W/2, 410, 'УРОВНИ', {
-      fontFamily: FONT, fontSize: '24px', color: '#5f7aa8', fontStyle: 'bold'
-    }).setOrigin(0.5);
+    /* --- Языковой переключатель --- */
+    const langStyleActive   = { fontFamily: FONT, fontSize: '26px', color: '#8fb4ee', fontStyle: 'bold' };
+    const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
 
-    // переключатель звука
+    const langBtnRU = this.add.text(60, 96, 'RU', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+    const langBtnEN = this.add.text(120, 96, 'EN', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+
+    const updateLangStyles = () => {
+      langBtnRU.setColor(CURRENT_LANG === 'ru' ? '#8fb4ee' : '#3a4a68');
+      langBtnEN.setColor(CURRENT_LANG === 'en' ? '#8fb4ee' : '#3a4a68');
+    };
+    updateLangStyles();
+
+    langBtnRU.on('pointerdown', () => {
+      if (CURRENT_LANG === 'ru') return;
+      Sound.init(); Sound.ui();
+      CURRENT_LANG = 'ru';
+      const s = loadSave(); s.lang = 'ru'; writeSave(s);
+      this.scene.restart();
+    });
+    langBtnEN.on('pointerdown', () => {
+      if (CURRENT_LANG === 'en') return;
+      Sound.init(); Sound.ui();
+      CURRENT_LANG = 'en';
+      const s = loadSave(); s.lang = 'en'; writeSave(s);
+      this.scene.restart();
+    });
+
+    /* --- Кнопка звука --- */
     const sBtn = this.add.text(W-64, 96, Sound.on ? '♪' : '✕', {
       fontFamily: FONT, fontSize: '44px',
       color: Sound.on ? '#8fb4ee' : '#3a4a68', fontStyle: 'bold'
@@ -418,9 +571,24 @@ class MenuScene extends Phaser.Scene {
       if (Sound.on) Sound.ui();
     });
 
+    /* --- Главная кнопка --- */
+    const playLabel = save.max > 1
+      ? L('continue') + ' · ' + Math.min(save.max, LEVELS_TOTAL)
+      : L('play');
+    makeButton(this, W/2, 300, 340, 96, playLabel, 0x2f5fa8, () => {
+      this.scene.start('game', { level: Math.min(save.max, LEVELS_TOTAL) });
+    }, 34);
+
+    this.add.text(W/2, 410, L('levels'), {
+      fontFamily: FONT, fontSize: '24px', color: '#5f7aa8', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    /* --- Сетка уровней --- */
     const cols = 6, bw = 76, gap = 14, dy = 88;
     const x0 = (W - (cols*bw + (cols-1)*gap))/2 + bw/2;
     const y0 = 500;
+
+    const rankColor = { S:'#ffd54f', A:'#7fd4ff', B:'#a9e07a', C:'#8899aa' };
 
     for (let i=1; i<=LEVELS_TOTAL; i++){
       const col = (i-1) % cols;
@@ -429,6 +597,7 @@ class MenuScene extends Phaser.Scene {
       const y = y0 + row*dy;
       const unlocked = i <= save.max;
       const stars = save.stars[i] || 0;
+      const rank  = save.ranks[i];
 
       const btn = this.add.container(x, y);
       const bg = this.add.graphics();
@@ -447,6 +616,15 @@ class MenuScene extends Phaser.Scene {
       }).setOrigin(0.5);
 
       btn.add([bg, num, st]);
+
+      if (rank){
+        const rk = this.add.text(bw/2 - 8, -bw/2 + 8, rank, {
+          fontFamily: FONT, fontSize: '18px',
+          color: rankColor[rank] || '#8899aa', fontStyle: 'bold'
+        }).setOrigin(1, 0);
+        btn.add(rk);
+      }
+
       btn.setSize(bw, bw);
 
       if (unlocked){
@@ -462,7 +640,7 @@ class MenuScene extends Phaser.Scene {
 }
 
 /* ============================================================
-   СЦЕНА: ИГРА
+   ИГРА
    ============================================================ */
 class GameScene extends Phaser.Scene {
   constructor(){ super('game'); }
@@ -472,11 +650,17 @@ class GameScene extends Phaser.Scene {
   }
 
   create(){
-    this.solved    = false;
-    this.moves     = 0;
-    this.tiles     = [];             // сброс на случай scene.restart()
-    this.tileMap   = {};
-    this.levelData = generateLevel(this.levelNum);
+    this.solved       = false;
+    this.failed       = false;
+    this.moves        = 0;
+    this.hintUses     = 2;
+    this.reviveUsed   = false;
+    this._dangerPulse = false;
+    this._lastDangerLevel = 0;
+    this.tiles        = [];
+    this.tileMap      = {};
+    this.levelData    = generateLevel(this.levelNum);
+    this.movesLeft    = this.levelData.moveLimit;
 
     this.buildBackground();
     this.buildBoard();
@@ -499,7 +683,6 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0x2a4a8a, 0.011);
       g.fillCircle(W/2, 660, 120 + i*40);
     }
-    // живые звёзды
     for (let i=0; i<24; i++){
       const st = this.add.circle(rnd()*W, rnd()*H, 1 + rnd()*1.6,
                                 0xcfe0ff, 0.12 + rnd()*0.45)
@@ -544,7 +727,6 @@ class GameScene extends Phaser.Scene {
       base.strokeRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
       cont.add(base);
 
-      // подсветка «плитка под напряжением»
       const glow = this.add.graphics();
       glow.fillStyle(0xffb545, 1);
       glow.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
@@ -580,7 +762,6 @@ class GameScene extends Phaser.Scene {
                           Phaser.Geom.Rectangle.Contains);
       cont.on('pointerdown', () => this.onTileTap(t));
 
-      // появление
       const d = Math.abs(t.x - (size-1)/2) + Math.abs(t.y - (size-1)/2);
       cont.setScale(0.001);
       this.tweens.add({
@@ -602,25 +783,57 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor:true });
     back.on('pointerdown', () => { Sound.ui(); this.scene.start('menu'); });
 
-    this.add.text(W/2, 96, 'Уровень ' + this.levelNum, {
+    this.add.text(W/2, 96, L('level') + ' ' + this.levelNum, {
       fontFamily: FONT, fontSize: '40px', color: '#e6efff', fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    this.movesText = this.add.text(W/2, 152, 'Ходы: 0   ·   минимум: ' + this.levelData.par, {
+    this.movesText = this.add.text(W/2, 152, '', {
       fontFamily: FONT, fontSize: '25px', color: '#6f89b8'
     }).setOrigin(0.5);
+    this.refreshMovesText();
 
     this.bulbsText = this.add.text(W/2, 200, '', {
       fontFamily: FONT, fontSize: '24px', color: '#8a6a3a'
     }).setOrigin(0.5);
 
-    makeButton(this, 240, 1175, 200, 86, 'Заново', 0x1d2c4d,
+    makeButton(this, 240, 1175, 200, 86, L('restart'), 0x1d2c4d,
       () => this.scene.restart({ level: this.levelNum }), 28);
-    makeButton(this, 482, 1175, 220, 86, 'Подсказка', 0x2b4a7a,
-      () => Ads.rewarded(() => this.doHint()), 28);
+
+    this.hintBtn = makeButton(this, 482, 1175, 230, 86,
+      L('hint') + ' ×' + this.hintUses, 0x2b4a7a,
+      () => Ads.rewarded(() => this.doHint()), 24);
   }
 
-  /* -------- JUICE: искры при повороте -------- */
+  refreshMovesText(){
+    const d = this.levelData;
+    this.movesText.setText(
+      L('moves') + ': ' + this.moves + ' / ' + d.moveLimit +
+      '   ·   ' + L('min') + ': ' + d.par
+    );
+    const danger = this.movesLeft <= 3 && this.movesLeft > 0;
+    this.movesText.setColor(danger ? '#ff7070' : '#6f89b8');
+
+    if (danger){
+      if (!this._dangerPulse){
+        this._dangerPulse = true;
+        this.tweens.add({
+          targets: this.movesText, scale: { from: 1, to: 1.06 },
+          duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+      }
+      if (this._lastDangerLevel !== this.movesLeft){
+        this._lastDangerLevel = this.movesLeft;
+        Sound.warn();
+      }
+    } else {
+      if (this._dangerPulse){
+        this._dangerPulse = false;
+        this.tweens.killTweensOf(this.movesText);
+        this.movesText.setScale(1);
+      }
+    }
+  }
+
   ripple(t){
     const px = t._cont.x, py = t._cont.y, c = this.cell;
 
@@ -654,7 +867,7 @@ class GameScene extends Phaser.Scene {
   }
 
   onTileTap(t){
-    if (this.solved) return;
+    if (this.solved || this.failed) return;
     Sound.init();
 
     if (!t.rotatable){
@@ -666,13 +879,19 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.movesLeft <= 0){
+      Sound.locked();
+      return;
+    }
+
     Sound.tap();
     this.ripple(t);
 
     t.rot = (t.rot + 1) % 4;
     t._vis += 90;
     this.moves++;
-    this.movesText.setText('Ходы: ' + this.moves + '   ·   минимум: ' + this.levelData.par);
+    this.movesLeft--;
+    this.refreshMovesText();
 
     this.tweens.killTweensOf(t._cont);
     this.tweens.add({
@@ -680,7 +899,10 @@ class GameScene extends Phaser.Scene {
       angle: t._vis,
       duration: 190,
       ease: 'Back.easeOut',
-      onComplete: () => this.updateLight()
+      onComplete: () => {
+        this.updateLight();
+        this.checkFail();
+      }
     });
     this.tweens.add({
       targets: t._cont,
@@ -690,9 +912,16 @@ class GameScene extends Phaser.Scene {
   }
 
   doHint(){
-    if (this.solved) return;
+    if (this.solved || this.failed) return;
+    if (this.hintUses <= 0){
+      Sound.locked();
+      return;
+    }
+    this.hintUses--;
+    this.hintBtn.labelText.setText(L('hint') + ' ×' + this.hintUses);
+
     const t = this.levelData.tiles.find(
-      x => x.rotatable && !x.correctRots.includes(x.rot)
+      x => x.rotatable && !x._decoy && !x.correctRots.includes(x.rot)
     );
     if (!t) return;
 
@@ -721,6 +950,14 @@ class GameScene extends Phaser.Scene {
       ease: 'Cubic.easeInOut',
       onComplete: () => this.updateLight()
     });
+  }
+
+  checkFail(){
+    if (this.solved || this.failed) return;
+    if (this.movesLeft <= 0){
+      this.failed = true;
+      this.time.delayedCall(380, () => this.showFail());
+    }
   }
 
   updateLight(){
@@ -782,7 +1019,6 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // подсветка плиток
     for (const t of this.levelData.tiles){
       const isLit = lit.has(t.x+','+t.y);
       if (isLit !== t._litAny){
@@ -826,11 +1062,11 @@ class GameScene extends Phaser.Scene {
     }
 
     if (this.bulbsText){
-      this.bulbsText.setText('Бутоны: ' + litCount + ' / ' + total);
+      this.bulbsText.setText(L('buds') + ': ' + litCount + ' / ' + total);
       this.bulbsText.setColor(litCount === total ? '#ffcf6b' : '#7a6647');
     }
 
-    if (litCount === total && total > 0 && !this.solved){
+    if (litCount === total && total > 0 && !this.solved && !this.failed){
       this.solved = true;
       this.time.delayedCall(520, () => this.showWin());
     }
@@ -856,7 +1092,6 @@ class GameScene extends Phaser.Scene {
         onComplete: () => c.destroy()
       });
     }
-    // мягкая вспышка на самом бутоне
     const flash = this.add.circle(px, py, this.cell*0.5, 0xfff3c4, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -890,10 +1125,15 @@ class GameScene extends Phaser.Scene {
   }
 
   showWin(){
-    const par   = this.levelData.par;
-    const stars = this.moves <= par ? 3
-                : this.moves <= par + 3 ? 2 : 1;
-    saveWin(this.levelNum, stars, this.moves);
+    const par = this.levelData.par;
+
+    let rank, stars;
+    if      (this.moves <= par)                              { rank = 'S'; stars = 3; }
+    else if (this.moves <= par + Math.ceil(par * 0.1))       { rank = 'A'; stars = 2; }
+    else if (this.moves <= par + Math.ceil(par * 0.25))      { rank = 'B'; stars = 1; }
+    else                                                     { rank = 'C'; stars = 1; }
+
+    saveWin(this.levelNum, stars, this.moves, rank);
     Ads.interstitial();
 
     Sound.win();
@@ -915,15 +1155,32 @@ class GameScene extends Phaser.Scene {
     panel.strokeRoundedRect(W/2-260, 380, 520, 540, 32);
     overlay.add(panel);
 
-    overlay.add(this.add.text(W/2, 445, 'Уровень пройден!', {
-      fontFamily: FONT, fontSize: '40px', color: '#eaf2ff', fontStyle: 'bold'
+    overlay.add(this.add.text(W/2, 435, L('levelComplete'), {
+      fontFamily: FONT, fontSize: '36px', color: '#eaf2ff', fontStyle: 'bold'
     }).setOrigin(0.5));
 
-    // звёзды
+    const rankColor = { S: '#ffd54f', A: '#7fd4ff', B: '#a9e07a', C: '#8899aa' };
+    const rankLabel = {
+      S: L('rankS'), A: L('rankA'), B: L('rankB'), C: L('rankC')
+    };
+    const rankText = this.add.text(W/2, 525, rank, {
+      fontFamily: FONT, fontSize: '72px',
+      color: rankColor[rank], fontStyle: 'bold'
+    }).setOrigin(0.5);
+    rankText.setScale(0);
+    overlay.add(rankText);
+    this.tweens.add({
+      targets: rankText, scale: 1,
+      duration: 420, delay: 150, ease: 'Back.easeOut'
+    });
+    overlay.add(this.add.text(W/2, 585, rankLabel[rank], {
+      fontFamily: FONT, fontSize: '20px', color: rankColor[rank]
+    }).setOrigin(0.5));
+
     for (let i=0; i<3; i++){
-      const sx = W/2 + (i-1)*90, sy = 560;
+      const sx = W/2 + (i-1)*70, sy = 665;
       const star = this.add.text(sx, sy, '★', {
-        fontFamily: FONT, fontSize: '80px',
+        fontFamily: FONT, fontSize: '60px',
         color: i < stars ? '#ffcf6b' : '#2a3a56'
       }).setOrigin(0.5);
       overlay.add(star);
@@ -931,42 +1188,115 @@ class GameScene extends Phaser.Scene {
         star.setScale(0);
         this.tweens.add({
           targets: star, scale: 1,
-          duration: 380, delay: 200 + i*180, ease: 'Back.easeOut'
-        });
-        this.tweens.add({
-          targets: star, angle: { from: -8, to: 8 },
-          duration: 900, delay: 800 + i*180,
-          yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+          duration: 380, delay: 320 + i*160, ease: 'Back.easeOut'
         });
       }
     }
 
-    overlay.add(this.add.text(W/2, 650,
-      'ходов: ' + this.moves + '   (минимум ' + par + ')', {
+    overlay.add(this.add.text(W/2, 745,
+      L('movesLower') + ': ' + this.moves + '   (' + L('minimum') + ' ' + par + ')', {
       fontFamily: FONT, fontSize: '24px', color: '#7d97c4'
     }).setOrigin(0.5));
 
     const best = loadSave().best[this.levelNum];
-    if (best){
-      overlay.add(this.add.text(W/2, 690,
-        'лучший результат: ' + best, {
-        fontFamily: FONT, fontSize: '22px', color: '#5f7aa8'
+    if (best && best < this.moves){
+      overlay.add(this.add.text(W/2, 780,
+        L('best') + ': ' + best, {
+        fontFamily: FONT, fontSize: '20px', color: '#5f7aa8'
       }).setOrigin(0.5));
     }
 
     const isLast = this.levelNum >= LEVELS_TOTAL;
-    const nextLabel  = isLast ? 'В меню' : 'Далее';
+    const nextLabel  = isLast ? L('toMenu') : L('next');
     const nextAction = isLast
       ? () => this.scene.start('menu')
       : () => this.scene.start('game', { level: this.levelNum + 1 });
 
-    overlay.add(makeButton(this, W/2, 775, 300, 90, nextLabel, 0x2f5fa8, nextAction, 32));
-    overlay.add(makeButton(this, W/2, 870, 260, 74, 'К уровням', 0x1d2c4d, () => {
+    overlay.add(makeButton(this, W/2, 830, 300, 86, nextLabel, 0x2f5fa8, nextAction, 32));
+    overlay.add(makeButton(this, W/2, 920, 260, 70, L('toLevels'), 0x1d2c4d, () => {
       this.scene.start('menu');
-    }, 26));
+    }, 24));
 
     overlay.setAlpha(0);
     this.tweens.add({ targets: overlay, alpha: 1, duration: 250 });
+  }
+
+  showFail(){
+    Sound.fail();
+    this.cameras.main.shake(300, 0.012);
+    this.cameras.main.flash(300, 120, 30, 40);
+
+    for (const t of this.levelData.tiles){
+      if (t._glow){
+        this.tweens.killTweensOf(t._glow);
+        this.tweens.add({ targets: t._glow, alpha: 0, duration: 300 });
+      }
+      if (t._halo) {
+        this.tweens.killTweensOf(t._halo);
+        this.tweens.add({ targets: t._halo, alpha: 0, duration: 300 });
+      }
+      if (t._cont){
+        this.tweens.add({ targets: t._cont, alpha: 0.55, duration: 300 });
+      }
+    }
+
+    const overlay = this.add.container(0, 0).setDepth(1000);
+
+    const dim = this.add.graphics();
+    dim.fillStyle(0x1a0508, 0.82);
+    dim.fillRect(0, 0, W, H);
+    overlay.add(dim);
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1a0f12, 0.98);
+    panel.fillRoundedRect(W/2-260, 400, 520, 500, 32);
+    panel.lineStyle(3, 0x7a2a3a, 0.9);
+    panel.strokeRoundedRect(W/2-260, 400, 520, 500, 32);
+    overlay.add(panel);
+
+    overlay.add(this.add.text(W/2, 470, L('withered'), {
+      fontFamily: FONT, fontSize: '46px', color: '#ff7a8a', fontStyle: 'bold'
+    }).setOrigin(0.5));
+
+    overlay.add(this.add.text(W/2, 540, L('outOfMoves'), {
+      fontFamily: FONT, fontSize: '26px', color: '#b0707e'
+    }).setOrigin(0.5));
+
+    overlay.add(this.add.text(W/2, 590,
+      L('movesLower') + ': ' + this.moves + ' / ' + this.levelData.moveLimit, {
+      fontFamily: FONT, fontSize: '22px', color: '#8a6070'
+    }).setOrigin(0.5));
+
+    if (!this.reviveUsed){
+      const reviveBtn = makeButton(this, W/2, 690, 380, 88,
+        '▶ ' + L('adReward'), 0x6a3a48,
+        () => {
+          Ads.rewarded(() => {
+            this.reviveUsed = true;
+            this.failed = false;
+            this.movesLeft += 5;
+            this.refreshMovesText();
+            Sound.ui();
+            for (const t of this.levelData.tiles){
+              if (t._cont) this.tweens.add({ targets: t._cont, alpha: 1, duration: 200 });
+            }
+            this.updateLight();
+            overlay.destroy();
+          });
+        }, 24);
+      overlay.add(reviveBtn);
+    }
+
+    overlay.add(makeButton(this, W/2, 795, 300, 86, L('restart'), 0x2f5fa8, () => {
+      this.scene.restart({ level: this.levelNum });
+    }, 30));
+
+    overlay.add(makeButton(this, W/2, 885, 260, 70, L('toLevels'), 0x1d2c4d, () => {
+      this.scene.start('menu');
+    }, 24));
+
+    overlay.setAlpha(0);
+    this.tweens.add({ targets: overlay, alpha: 1, duration: 300 });
   }
 }
 
@@ -983,10 +1313,11 @@ const config = {
   scene: [MenuScene, GameScene]
 };
 
-Sound.on = loadSave().sound;
+const _bootSave = loadSave();
+Sound.on = _bootSave.sound;
+CURRENT_LANG = _bootSave.lang || 'en';
 new Phaser.Game(config);
 
-// разблокировка аудио по первому касанию
 window.addEventListener('pointerdown', () => Sound.init(), { passive: true });
 </script>
 </body>
