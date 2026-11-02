@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Lumen Garden v0.2.1</title>
+<title>Lumen Garden v0.3.0</title>
 <style>
   html,body{margin:0;padding:0;height:100%;background:#070a12;overflow:hidden;touch-action:manipulation;}
   canvas{display:block;}
@@ -13,25 +13,24 @@
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 <script>
 /* ============================================================
-   LUMEN GARDEN — v0.2.1
-   - Full board: all cells filled with tiles (real + decoy)
-   - Multi-language (RU / EN) with menu selector
-   - Hard move limit + S/A/B/C ranks
-   - Portal exit buttons (menu + in-game)
+   LUMEN GARDEN — v0.3.0
+   - Fireflies: extra terminals on branches (must be lit)
+   - Much harder difficulty curve from level 5
+   - Juice: ambient motes, light pulse, streak, splash, shake
+   - English-only branding, save key migration
    ============================================================ */
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 const W = 720, H = 1280;
 const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
-const SAVE_KEY = 'svetosad_save_v1';
+const SAVE_KEY = 'lumen_garden_save_v1';
+const LEGACY_SAVE_KEY = 'svetosad_save_v1';
 const LEVELS_TOTAL = 48;
 
-/* ─── Настройки портала  ─── */
+/* ─── Портал ─── */
 const PORTAL_URL = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
 const GAMES_URL  = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
 
-/* Универсальный выход: сначала postMessage родителю (для iframe),
-   потом редирект. Если URL не задан — history.back(). */
 function exitToPortal(url){
   try {
     if (window.parent && window.parent !== window) {
@@ -72,7 +71,7 @@ function mulberry32(a){
    ============================================================ */
 const LANGS = {
   ru: {
-    subtitle:     'зажги все бутоны · не потрать лишний ход',
+    subtitle:     'зажги все бутоны и светлячков · не потрать лишний ход',
     play:         'Играть',
     continue:     'Продолжить',
     levels:       'УРОВНИ',
@@ -82,6 +81,7 @@ const LANGS = {
     min:          'мин',
     minimum:      'минимум',
     buds:         'Бутоны',
+    fireflies:    'Светлячки',
     restart:      'Заново',
     hint:         'Подсказка',
     levelComplete:'Уровень пройден!',
@@ -97,9 +97,10 @@ const LANGS = {
     outOfMoves:   'Закончились ходы',
     adReward:     '+5 ходов (реклама)',
     backSite:     '← Сайт',
+    perfectStreak:'ИДЕАЛЬНО ×',
   },
   en: {
-    subtitle:     'light every bud · waste no move',
+    subtitle:     'light every bud and firefly · waste no move',
     play:         'Play',
     continue:     'Continue',
     levels:       'LEVELS',
@@ -109,6 +110,7 @@ const LANGS = {
     min:          'min',
     minimum:      'minimum',
     buds:         'Buds',
+    fireflies:    'Fireflies',
     restart:      'Restart',
     hint:         'Hint',
     levelComplete:'Level complete!',
@@ -124,6 +126,7 @@ const LANGS = {
     outOfMoves:   'Out of moves',
     adReward:     '+5 moves (ad)',
     backSite:     '← Site',
+    perfectStreak:'PERFECT ×',
   }
 };
 
@@ -174,6 +177,9 @@ const Sound = {
             this.tone(1320, 0.18, {type:'sine', vol:0.06, delay:0.09}); },
   lit(){    [660, 880, 1108].forEach((f,i)=>
               this.tone(f, 0.22, {type:'sine', vol:0.08, delay:i*0.07})); },
+  flyLit(){ [880, 1320, 1760].forEach((f,i)=>
+              this.tone(f, 0.18, {type:'sine', vol:0.06, delay:i*0.05})); },
+  streak(n){ this.tone(880 + Math.min(n, 6) * 100, 0.15, {type:'sine', vol:0.08, to:1200}); },
   win(){    [523, 659, 784, 1046, 1318].forEach((f,i)=>
               this.tone(f, 0.38, {type:'triangle', vol:0.085, delay:i*0.1})); },
   fail(){   [440, 330, 260, 200].forEach((f,i)=>
@@ -182,11 +188,25 @@ const Sound = {
 };
 
 /* ============================================================
-   СОХРАНЕНИЕ
+   СОХРАНЕНИЕ (с миграцией старого ключа)
    ============================================================ */
 function loadSave(){
+  let raw = null;
+  try { raw = localStorage.getItem(SAVE_KEY); } catch(e){}
+
+  if (!raw){
+    try {
+      const legacy = localStorage.getItem(LEGACY_SAVE_KEY);
+      if (legacy){
+        localStorage.setItem(SAVE_KEY, legacy);
+        localStorage.removeItem(LEGACY_SAVE_KEY);
+        raw = legacy;
+      }
+    } catch(e){}
+  }
+
   let s = null;
-  try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(e){}
+  try { s = JSON.parse(raw); } catch(e){}
   if (!s || typeof s !== 'object') s = {};
   if (!s.max)   s.max = 1;
   if (!s.stars) s.stars = {};
@@ -211,9 +231,38 @@ function saveWin(level, stars, moves, rank){
 }
 
 /* ============================================================
-   ГЕНЕРАТОР УРОВНЕЙ
+   КОНФИГ УРОВНЯ — крутая кривая сложности
    ============================================================ */
-function buildCandidate(size, bulbCount, targetLen, rng){
+function getLevelConfig(levelNum){
+  let size, bulbCount, fireflyCount;
+
+  if      (levelNum <= 1)  { size = 4; bulbCount = 1; fireflyCount = 0; }
+  else if (levelNum <= 2)  { size = 4; bulbCount = 1; fireflyCount = 1; }
+  else if (levelNum <= 3)  { size = 5; bulbCount = 1; fireflyCount = 1; }
+  else if (levelNum <= 4)  { size = 5; bulbCount = 2; fireflyCount = 1; }
+  else if (levelNum <= 5)  { size = 6; bulbCount = 2; fireflyCount = 1; } // ← думаешь
+  else if (levelNum <= 7)  { size = 6; bulbCount = 2; fireflyCount = 2; }
+  else if (levelNum <= 9)  { size = 6; bulbCount = 2; fireflyCount = 2; }
+  else if (levelNum <= 12) { size = 7; bulbCount = 2; fireflyCount = 2; }
+  else if (levelNum <= 15) { size = 7; bulbCount = 2; fireflyCount = 3; }
+  else if (levelNum <= 20) { size = 7; bulbCount = 3; fireflyCount = 3; }
+  else if (levelNum <= 28) { size = 8; bulbCount = 3; fireflyCount = 3; }
+  else if (levelNum <= 40) { size = 8; bulbCount = 3; fireflyCount = 4; }
+  else                     { size = 8; bulbCount = 4; fireflyCount = 4; }
+
+  const totalTerminals = bulbCount + fireflyCount;
+  const targetLen = Math.max(6, Math.min(
+    Math.floor(size * size * 0.55),
+    6 + levelNum * 0.9 + totalTerminals * 2
+  ));
+
+  return { size, bulbCount, fireflyCount, totalTerminals, targetLen };
+}
+
+/* ============================================================
+   ГЕНЕРАТОР
+   ============================================================ */
+function buildCandidate(size, totalTerminals, targetLen, rng){
   const key = (x,y)=>x+','+y;
   const inB = (x,y)=> x>=0 && y>=0 && x<size && y<size;
   const cells = new Map();
@@ -261,12 +310,12 @@ function buildCandidate(size, bulbCount, targetLen, rng){
   const main = walk(s.x, s.y, sdir, targetLen);
   if (main.len < 3) return null;
 
-  const bulbs = [main.end];
+  const terminals = [main.end];
   let total = main.len;
   let cands = main.path.slice(1, -1);
 
   let guard = 0;
-  while (bulbs.length < bulbCount && cands.length && guard++ < 120){
+  while (terminals.length < totalTerminals && cands.length && guard++ < 200){
     const c = cands.splice(Math.floor(rng()*cands.length), 1)[0];
     const t = cells.get(key(c.x,c.y));
     if (!t) continue;
@@ -278,20 +327,20 @@ function buildCandidate(size, bulbCount, targetLen, rng){
     }
     if (!free.length) continue;
     const d0 = free[Math.floor(rng()*free.length)];
-    const br = walk(c.x, c.y, d0, Math.max(2, Math.round(targetLen*0.6)));
+    const br = walk(c.x, c.y, d0, Math.max(2, Math.round(targetLen*0.55)));
     if (br.len < 1) continue;
-    bulbs.push(br.end);
+    terminals.push(br.end);
     total += br.len;
     cands = cands.concat(br.path.slice(1,-1));
   }
 
-  if (bulbs.length < bulbCount) return null;
-  for (const b of bulbs){
+  if (terminals.length < totalTerminals) return null;
+  for (const b of terminals){
     const cell = cells.get(key(b.x,b.y));
     if (!cell || popcount(cell.conns) !== 1) return null;
   }
 
-  return { cells, source:s, bulbs, size, total };
+  return { cells, source:s, terminals, size, total };
 }
 
 function makeFallbackLevel(size){
@@ -302,7 +351,7 @@ function makeFallbackLevel(size){
     if (x<size-1) conns |= bit(1);
     cells.set(key(x,y), {x, y, conns});
   }
-  return { cells, source:{x:0,y}, bulbs:[{x:size-1,y}], size, total:size };
+  return { cells, source:{x:0,y}, terminals:[{x:size-1,y}], size, total:size };
 }
 
 function fillBoardWithDecoys(levelData, rng){
@@ -311,7 +360,6 @@ function fillBoardWithDecoys(levelData, rng){
   for (const t of levelData.tiles) occupied.add(t.x+','+t.y);
 
   const types = ['straight','corner','tee','straight','corner'];
-
   for (let y = 0; y < size; y++){
     for (let x = 0; x < size; x++){
       if (occupied.has(x+','+y)) continue;
@@ -334,32 +382,36 @@ function fillBoardWithDecoys(levelData, rng){
 }
 
 function generateLevel(levelNum){
+  const cfg = getLevelConfig(levelNum);
   const rng = mulberry32(levelNum*7919 + 104729);
 
-  const size = levelNum <= 3  ? 4
-             : levelNum <= 10 ? 5
-             : levelNum <= 22 ? 6
-             : levelNum <= 36 ? 7
-             : 8;
-  const bulbCount = levelNum <= 5  ? 1
-                  : levelNum <= 18 ? 2
-                  : 3;
-  const targetLen = Math.max(5, Math.min(
-    Math.floor(size*size*0.55),
-    4 + Math.floor(levelNum*0.85)
-  ));
-
   let best = null;
-  const tries = levelNum > 30 ? 150 : 80;
+  const tries = levelNum > 20 ? 180 : 120;
   for (let a=0; a<tries; a++){
-    const res = buildCandidate(size, bulbCount, targetLen, rng);
+    const res = buildCandidate(cfg.size, cfg.totalTerminals, cfg.targetLen, rng);
     if (res && (!best || res.total > best.total)) best = res;
-    if (best && best.total >= targetLen) break;
+    if (best && best.total >= cfg.targetLen) break;
   }
-  if (!best) best = buildCandidate(size, 1, 4, rng) || makeFallbackLevel(size);
+  if (!best) best = makeFallbackLevel(cfg.size);
+
+  // Назначаем роли терминалам: первый = бутон (main end), остальные — микс
+  const terminals = best.terminals;
+  const mainEnd = terminals[0];
+  const others  = terminals.slice(1);
+  for (let i=others.length-1; i>0; i--){
+    const j = Math.floor(rng()*(i+1));
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+  const bulbEnds    = [mainEnd, ...others.slice(0, Math.max(0, cfg.bulbCount - 1))];
+  const fireflyEnds = others.slice(
+    Math.max(0, cfg.bulbCount - 1),
+    Math.max(0, cfg.bulbCount - 1) + cfg.fireflyCount
+  );
+
+  const bulbSet = new Set(bulbEnds.map(p => p.x+','+p.y));
+  const flySet  = new Set(fireflyEnds.map(p => p.x+','+p.y));
 
   const key = (x,y)=>x+','+y;
-  const bulbSet = new Set(best.bulbs.map(b=>key(b.x,b.y)));
   const tiles = [];
 
   for (const [k, c] of best.cells){
@@ -368,6 +420,7 @@ function generateLevel(levelNum){
 
     if (isSrc){ type='source'; canonical=c.conns; rotatable=false; }
     else if (bulbSet.has(k)){ type='bulb'; canonical=c.conns; rotatable=false; }
+    else if (flySet.has(k)){ type='firefly'; canonical=c.conns; rotatable=false; }
     else {
       const n = popcount(c.conns);
       if (n===2){
@@ -407,9 +460,16 @@ function generateLevel(levelNum){
 
   fillBoardWithDecoys({ size: best.size, tiles }, rng);
 
-  const moveLimit = par + Math.max(3, Math.ceil(par * 0.3));
+  const moveLimit = par + Math.max(3, Math.ceil(par * 0.25));
 
-  return { size: best.size, tiles, par, bulbCount, moveLimit };
+  return {
+    size: best.size,
+    tiles,
+    par,
+    bulbCount: bulbEnds.length,
+    fireflyCount: fireflyEnds.length,
+    moveLimit
+  };
 }
 
 /* ============================================================
@@ -443,6 +503,34 @@ function drawBulbGfx(g, cell, lit){
   }
 }
 
+function drawFireflyGfx(g, cell, lit){
+  g.clear();
+  const r = cell*0.13;
+
+  // Крылышки
+  if (lit){
+    g.fillStyle(0xbfe8ff, 0.45);
+    g.fillEllipse(-r*0.85, -r*0.55, r*1.3, r*0.75);
+    g.fillEllipse( r*0.85, -r*0.55, r*1.3, r*0.75);
+  } else {
+    g.fillStyle(0x3a5480, 0.35);
+    g.fillEllipse(-r*0.85, -r*0.55, r*1.3, r*0.75);
+    g.fillEllipse( r*0.85, -r*0.55, r*1.3, r*0.75);
+  }
+
+  // Тело / свечение
+  if (lit){
+    g.fillStyle(0x7fd4ff, 0.16); g.fillCircle(0,0,r*2.6);
+    g.fillStyle(0xbfe8ff, 0.34); g.fillCircle(0,0,r*1.6);
+    g.fillStyle(0xffffff, 1);    g.fillCircle(0,0,r*0.85);
+  } else {
+    g.fillStyle(0x0f1828, 1);    g.fillCircle(0,0,r*1.05);
+    g.lineStyle(Math.max(2, cell*0.024), 0x3a5480, 1);
+    g.strokeCircle(0,0,r*1.05);
+    g.fillStyle(0x2a4d7a, 1);    g.fillCircle(0,0,r*0.42);
+  }
+}
+
 function drawSourceGfx(g, cell){
   g.clear();
   const r = cell*0.13;
@@ -465,7 +553,7 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
   c.add([g, t]);
   c.labelText = t;
   c.setSize(w, h);
-  c.setInteractive({ useHandCursor:true });
+  c.setInteractive({ useHandCursor: true });
   c.on('pointerdown', () => {
     Sound.init(); Sound.ui();
     scene.tweens.add({ targets:c, scale:0.94, duration:70, yoyo:true });
@@ -473,20 +561,18 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
   });
   return c;
 }
-/* Круглая кнопка с толстой стрелкой влево.
-   Параметры: scene, x, y, radius, onClick, opts (опционально цвета). */
+
+/* Круглая кнопка с толстой стрелкой влево */
 function makeArrowButton(scene, x, y, radius, onClick, opts){
   opts = opts || {};
   const c = scene.add.container(x, y);
   const g = scene.add.graphics();
 
-  // Круг
   g.fillStyle(opts.bg || 0x1d2c4d, 1);
   g.fillCircle(0, 0, radius);
   g.lineStyle(2, 0x3b5a92, 0.55);
   g.strokeCircle(0, 0, radius);
 
-  // Толстая стрелка влево
   const tipX   = -radius * 0.50;
   const baseX  =  0;
   const headH  =  radius * 0.35;
@@ -494,10 +580,10 @@ function makeArrowButton(scene, x, y, radius, onClick, opts){
   const shaftH =  radius * 0.15;
 
   g.fillStyle(opts.fg || 0xdbe7ff, 1);
-  g.fillTriangle(tipX, 0, baseX, -headH, baseX, headH);          // наконечник
-  g.fillRect(baseX, -shaftH, shaftX - baseX, shaftH * 2);        // древко
+  g.fillTriangle(tipX, 0, baseX, -headH, baseX, headH);
+  g.fillRect(baseX, -shaftH, shaftX - baseX, shaftH * 2);
 
-    c.add(g);
+  c.add(g);
   c.setSize(radius * 2, radius * 2);
   c.setInteractive({ useHandCursor: true });
   c.on('pointerdown', () => {
@@ -507,6 +593,7 @@ function makeArrowButton(scene, x, y, radius, onClick, opts){
   });
   return c;
 }
+
 /* ============================================================
    РЕКЛАМА
    ============================================================ */
@@ -558,7 +645,6 @@ class MenuScene extends Phaser.Scene {
       });
     }
 
-    /* --- Заголовок --- */
     const title = this.add.text(W/2, 130, 'LUMEN GARDEN', {
       fontFamily: FONT, fontSize: '56px', color: '#eaf2ff', fontStyle: 'bold',
       letterSpacing: 2
@@ -572,22 +658,20 @@ class MenuScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '22px', color: '#7d97c4'
     }).setOrigin(0.5);
 
-    /* --- Версия --- */
     this.add.text(W-24, H-24, 'v' + VERSION, {
       fontFamily: FONT, fontSize: '18px', color: '#3a5480'
     }).setOrigin(1, 1);
 
-  /* --- Кнопка выхода на портал: круглая стрелка --- */
-makeArrowButton(this, 80, 96, 26, () => exitToPortal(PORTAL_URL));
+    /* Круглая кнопка на портал */
+    makeArrowButton(this, 80, 96, 26, () => exitToPortal(PORTAL_URL));
 
-    /* --- Языковой переключатель (сдвинут правее) --- */
-    const langStyleActive   = { fontFamily: FONT, fontSize: '26px', color: '#8fb4ee', fontStyle: 'bold' };
+    /* RU/EN под нотой в столбик */
     const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
 
-  const langBtnRU = this.add.text(W - 64, 150, 'RU', langStyleInactive)
-  .setOrigin(0.5).setInteractive({ useHandCursor:true });
-const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
-  .setOrigin(0.5).setInteractive({ useHandCursor:true });
+    const langBtnRU = this.add.text(W - 64, 150, 'RU', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+    const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
+      .setOrigin(0.5).setInteractive({ useHandCursor:true });
 
     langBtnRU.setColor(CURRENT_LANG === 'ru' ? '#8fb4ee' : '#3a4a68');
     langBtnEN.setColor(CURRENT_LANG === 'en' ? '#8fb4ee' : '#3a4a68');
@@ -607,7 +691,6 @@ const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
       this.scene.restart();
     });
 
-    /* --- Кнопка звука --- */
     const sBtn = this.add.text(W-64, 96, Sound.on ? '♪' : '✕', {
       fontFamily: FONT, fontSize: '44px',
       color: Sound.on ? '#8fb4ee' : '#3a4a68', fontStyle: 'bold'
@@ -621,7 +704,6 @@ const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
       if (Sound.on) Sound.ui();
     });
 
-    /* --- Главная кнопка --- */
     const playLabel = save.max > 1
       ? L('continue') + ' · ' + Math.min(save.max, LEVELS_TOTAL)
       : L('play');
@@ -633,7 +715,6 @@ const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
       fontFamily: FONT, fontSize: '24px', color: '#5f7aa8', fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    /* --- Сетка уровней --- */
     const cols = 6, bw = 76, gap = 14, dy = 88;
     const x0 = (W - (cols*bw + (cols-1)*gap))/2 + bw/2;
     const y0 = 500;
@@ -676,7 +757,6 @@ const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
       }
 
       btn.setSize(bw, bw);
-
       if (unlocked){
         btn.setInteractive({ useHandCursor:true });
         btn.on('pointerdown', () => {
@@ -705,6 +785,7 @@ class GameScene extends Phaser.Scene {
     this.moves        = 0;
     this.hintUses     = 2;
     this.reviveUsed   = false;
+    this.streak       = 0;
     this._dangerPulse = false;
     this._lastDangerLevel = 0;
     this.tiles        = [];
@@ -715,6 +796,7 @@ class GameScene extends Phaser.Scene {
     this.buildBackground();
     this.buildBoard();
     this.buildHUD();
+    this.showLevelSplash();
     this.updateLight();
 
     this.cameras.main.fadeIn(200, 7, 10, 18);
@@ -733,6 +815,8 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(0x2a4a8a, 0.011);
       g.fillCircle(W/2, 660, 120 + i*40);
     }
+
+    // Мерцающие звёзды
     for (let i=0; i<24; i++){
       const st = this.add.circle(rnd()*W, rnd()*H, 1 + rnd()*1.6,
                                 0xcfe0ff, 0.12 + rnd()*0.45)
@@ -742,6 +826,30 @@ class GameScene extends Phaser.Scene {
         duration: 1200 + rnd()*2400, yoyo: true, repeat: -1,
         delay: rnd()*1700, ease: 'Sine.easeInOut'
       });
+    }
+
+    // Ambient motes — плавающие пылинки
+    for (let i = 0; i < 20; i++){
+      const m = this.add.circle(
+        Math.random()*W, Math.random()*H,
+        1 + Math.random()*1.5, 0xaac4ff, 0.1 + Math.random()*0.3
+      ).setBlendMode(Phaser.BlendModes.ADD);
+      const life = 6000 + Math.random()*8000;
+      const drift = () => {
+        m.x = Math.random() * W;
+        m.y = H + 20;
+        m.alpha = 0.1 + Math.random() * 0.3;
+        this.tweens.add({
+          targets: m,
+          y: -20,
+          x: m.x + (Math.random() - 0.5) * 100,
+          alpha: 0,
+          duration: life,
+          ease: 'Sine.easeInOut',
+          onComplete: drift
+        });
+      };
+      drift();
     }
   }
 
@@ -777,12 +885,21 @@ class GameScene extends Phaser.Scene {
       base.strokeRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
       cont.add(base);
 
+      // Glow от света
       const glow = this.add.graphics();
       glow.fillStyle(0xffb545, 1);
       glow.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
       glow.setAlpha(0);
       cont.add(glow);
       t._glow = glow;
+
+      // Hover highlight (перед трубой — чтобы не заслонять)
+      const hover = this.add.graphics();
+      hover.fillStyle(0xaaccff, 0.12);
+      hover.fillRoundedRect(-cell/2+gap, -cell/2+gap, cell-gap*2, cell-gap*2, cell*0.20);
+      hover.setAlpha(0);
+      cont.add(hover);
+      t._hover = hover;
 
       const pipe = this.add.graphics();
       drawPipeShape(pipe, t.canonical, cell*0.5, cell*0.13, 0x2e4270, 1);
@@ -798,6 +915,16 @@ class GameScene extends Phaser.Scene {
         drawBulbGfx(bg, cell, false);
         cont.add(bg);
         t._bulbG = bg;
+      } else if (t.type === 'firefly'){
+        const halo = this.add.circle(0, 0, cell*0.28, 0x7fd4ff, 0)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        cont.add(halo);
+        t._halo = halo;
+
+        const fg = this.add.graphics();
+        drawFireflyGfx(fg, cell, false);
+        cont.add(fg);
+        t._flyG = fg;
       } else if (t.type === 'source'){
         const sg = this.add.graphics();
         drawSourceGfx(sg, cell);
@@ -811,6 +938,14 @@ class GameScene extends Phaser.Scene {
       cont.setInteractive(new Phaser.Geom.Rectangle(-cell/2, -cell/2, cell, cell),
                           Phaser.Geom.Rectangle.Contains);
       cont.on('pointerdown', () => this.onTileTap(t));
+      cont.on('pointerover', () => {
+        if (t.rotatable && !this.solved && !this.failed && this.movesLeft > 0){
+          this.tweens.add({ targets: hover, alpha: 1, duration: 120 });
+        }
+      });
+      cont.on('pointerout', () => {
+        this.tweens.add({ targets: hover, alpha: 0, duration: 120 });
+      });
 
       const d = Math.abs(t.x - (size-1)/2) + Math.abs(t.y - (size-1)/2);
       cont.setScale(0.001);
@@ -825,17 +960,24 @@ class GameScene extends Phaser.Scene {
     }
 
     this.lightGfx = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    // Пульсация светового луча
+    this.tweens.add({
+      targets: this.lightGfx,
+      alpha: { from: 1, to: 0.72 },
+      duration: 1400,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 
   buildHUD(){
-    /* Кнопка «‹» — назад в меню игры */
     const back = this.add.text(70, 96, '‹', {
       fontFamily: FONT, fontSize: '52px', color: '#7d97c4'
     }).setOrigin(0.5).setInteractive({ useHandCursor:true });
     back.on('pointerdown', () => { Sound.ui(); this.scene.start('menu'); });
 
-    /* Кнопка «← Сайт» — прямой выход на портал *//* Кнопка «← Сайт» — круглая стрелка, выход на портал */
-makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
+    makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
 
     this.add.text(W/2, 96, L('level') + ' ' + this.levelNum, {
       fontFamily: FONT, fontSize: '40px', color: '#e6efff', fontStyle: 'bold'
@@ -846,8 +988,12 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     }).setOrigin(0.5);
     this.refreshMovesText();
 
-    this.bulbsText = this.add.text(W/2, 200, '', {
-      fontFamily: FONT, fontSize: '24px', color: '#8a6a3a'
+    this.bulbsText = this.add.text(W/2, 198, '', {
+      fontFamily: FONT, fontSize: '22px', color: '#8a6a3a'
+    }).setOrigin(0.5);
+
+    this.fliesText = this.add.text(W/2, 228, '', {
+      fontFamily: FONT, fontSize: '22px', color: '#4a7a9a'
     }).setOrigin(0.5);
 
     makeButton(this, 240, 1175, 200, 86, L('restart'), 0x1d2c4d,
@@ -856,6 +1002,30 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     this.hintBtn = makeButton(this, 482, 1175, 230, 86,
       L('hint') + ' ×' + this.hintUses, 0x2b4a7a,
       () => Ads.rewarded(() => this.doHint()), 24);
+  }
+
+  showLevelSplash(){
+    const splash = this.add.text(W/2, 640, 'LEVEL ' + this.levelNum, {
+      fontFamily: FONT, fontSize: '68px', color: '#eaf2ff',
+      fontStyle: 'bold', letterSpacing: 3
+    }).setOrigin(0.5).setAlpha(0).setDepth(500);
+
+    this.tweens.add({
+      targets: splash,
+      alpha: { from: 0, to: 1 },
+      scale: { from: 0.85, to: 1 },
+      duration: 350,
+      ease: 'Back.easeOut'
+    });
+    this.time.delayedCall(850, () => {
+      if (!splash.active) return;
+      this.tweens.add({
+        targets: splash,
+        alpha: 0, scale: 1.15,
+        duration: 400,
+        onComplete: () => splash.destroy()
+      });
+    });
   }
 
   refreshMovesText(){
@@ -947,6 +1117,14 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     this.movesLeft--;
     this.refreshMovesText();
 
+    // Streak
+    if (t._decoy || !t.correctRots.includes(t.rot)){
+      this.streak = 0;
+    } else {
+      this.streak++;
+      if (this.streak >= 2) this.showStreak(this.streak);
+    }
+
     this.tweens.killTweensOf(t._cont);
     this.tweens.add({
       targets: t._cont,
@@ -965,12 +1143,33 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     });
   }
 
+  showStreak(n){
+    Sound.streak(n);
+    if (this._streakText && this._streakText.active) this._streakText.destroy();
+
+    this._streakText = this.add.text(W/2, 280, L('perfectStreak') + n, {
+      fontFamily: FONT, fontSize: '30px', color: '#ffcf6b', fontStyle: 'bold'
+    }).setOrigin(0.5).setAlpha(0).setDepth(100);
+
+    this.tweens.add({
+      targets: this._streakText,
+      alpha: 1, scale: { from: 0.5, to: 1.15 },
+      duration: 200, ease: 'Back.easeOut'
+    });
+    this.tweens.add({
+      targets: this._streakText,
+      y: 240, alpha: 0,
+      duration: 800, delay: 350,
+      onComplete: () => {
+        if (this._streakText && this._streakText.active) this._streakText.destroy();
+        this._streakText = null;
+      }
+    });
+  }
+
   doHint(){
     if (this.solved || this.failed) return;
-    if (this.hintUses <= 0){
-      Sound.locked();
-      return;
-    }
+    if (this.hintUses <= 0){ Sound.locked(); return; }
     this.hintUses--;
     this.hintBtn.labelText.setText(L('hint') + ' ×' + this.hintUses);
 
@@ -1084,15 +1283,27 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
       }
     }
 
-    let litCount = 0, total = 0;
+    let litBulbs = 0, totalBulbs = 0;
+    let litFlies = 0, totalFlies = 0;
+
     for (const t of this.levelData.tiles){
-      if (t.type !== 'bulb') continue;
-      total++;
+      const isTerm = (t.type === 'bulb' || t.type === 'firefly');
+      if (!isTerm) continue;
+
+      if (t.type === 'bulb') totalBulbs++;
+      else totalFlies++;
+
       const isLit = lit.has(t.x+','+t.y);
-      if (isLit) litCount++;
+      if (isLit){
+        if (t.type === 'bulb') litBulbs++;
+        else litFlies++;
+      }
+
       if (isLit !== t._lit){
         t._lit = isLit;
-        drawBulbGfx(t._bulbG, cell, isLit);
+
+        if (t.type === 'bulb') drawBulbGfx(t._bulbG, cell, isLit);
+        else drawFireflyGfx(t._flyG, cell, isLit);
 
         if (t._halo){
           this.tweens.killTweensOf(t._halo);
@@ -1111,16 +1322,44 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
           }
         }
 
-        if (isLit){ this.bloom(t); Sound.lit(); }
+        // Firefly: лёгкий танец когда зажжён
+        if (t.type === 'firefly' && t._flyG){
+          this.tweens.killTweensOf(t._flyG);
+          if (isLit){
+            t._flyG.x = 0; t._flyG.y = 0;
+            this.tweens.add({
+              targets: t._flyG,
+              x: { from: -cell*0.05, to: cell*0.05 },
+              y: { from: -cell*0.03, to: cell*0.03 },
+              duration: 1400, yoyo: true, repeat: -1,
+              ease: 'Sine.easeInOut'
+            });
+          } else {
+            t._flyG.x = 0; t._flyG.y = 0;
+          }
+        }
+
+        if (isLit){
+          if (t.type === 'bulb'){ this.bloom(t); Sound.lit(); }
+          else { this.fireflyBloom(t); Sound.flyLit(); }
+          this.cameras.main.shake(120, 0.003);
+        }
       }
     }
 
     if (this.bulbsText){
-      this.bulbsText.setText(L('buds') + ': ' + litCount + ' / ' + total);
-      this.bulbsText.setColor(litCount === total ? '#ffcf6b' : '#7a6647');
+      this.bulbsText.setText(L('buds') + ': ' + litBulbs + ' / ' + totalBulbs);
+      this.bulbsText.setColor(litBulbs === totalBulbs ? '#ffcf6b' : '#7a6647');
+    }
+    if (this.fliesText){
+      this.fliesText.setText(L('fireflies') + ': ' + litFlies + ' / ' + totalFlies);
+      this.fliesText.setColor(litFlies === totalFlies ? '#7fd4ff' : '#3a6480');
     }
 
-    if (litCount === total && total > 0 && !this.solved && !this.failed){
+    const allBulbs = litBulbs === totalBulbs && totalBulbs > 0;
+    const allFlies = litFlies === totalFlies && totalFlies > 0;
+
+    if (allBulbs && allFlies && !this.solved && !this.failed){
       this.solved = true;
       this.time.delayedCall(520, () => this.showWin());
     }
@@ -1139,8 +1378,7 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
         targets: c,
         x: px + Math.cos(a)*dist,
         y: py + Math.sin(a)*dist,
-        alpha: 0,
-        scale: 0.2,
+        alpha: 0, scale: 0.2,
         duration: 500 + Math.random()*400,
         ease: 'Cubic.easeOut',
         onComplete: () => c.destroy()
@@ -1155,21 +1393,49 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     });
   }
 
+  fireflyBloom(t){
+    const px = this.boardX + (t.x+0.5)*this.cell;
+    const py = this.boardY + (t.y+0.5)*this.cell;
+    for (let i=0; i<10; i++){
+      const a    = Math.random()*Math.PI*2;
+      const dist = this.cell*(0.4 + Math.random()*0.6);
+      const c = this.add.circle(px, py, this.cell*0.045, 0x7fd4ff)
+        .setAlpha(0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: c,
+        x: px + Math.cos(a)*dist,
+        y: py + Math.sin(a)*dist,
+        alpha: 0, scale: 0.2,
+        duration: 500 + Math.random()*400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => c.destroy()
+      });
+    }
+    const flash = this.add.circle(px, py, this.cell*0.45, 0xbfe8ff, 0.5)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: 2.2,
+      duration: 500, ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy()
+    });
+  }
+
   confetti(){
     const colors = [0xffcf6b, 0xffb545, 0x7fd4ff, 0xa9e07a, 0xff8fb0, 0xfff0bb];
-    for (let i=0; i<80; i++){
-      const w = 6 + Math.random()*8, h = 4 + Math.random()*5;
-      const c = this.add.rectangle(
+    for (let i=0; i<70; i++){
+      const size = 6 + Math.random()*8;
+      const c = this.add.circle(
         Math.random()*W, -20 - Math.random()*260,
-        w, h, colors[i % colors.length]
+        size/2, colors[i % colors.length]
       ).setDepth(999).setAlpha(0.95);
 
       this.tweens.add({
         targets: c,
         y: H + 60,
         x: c.x + (Math.random()-0.5)*240,
-        angle: 360 * (Math.random() < 0.5 ? 1 : -1),
-        alpha: { from: 0.95, to: 0.6 },
+        alpha: { from: 0.95, to: 0.55 },
+        scale: { from: 1, to: 0.7 },
         duration: 1800 + Math.random()*1700,
         delay: Math.random()*650,
         ease: 'Cubic.easeIn',
@@ -1214,9 +1480,8 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
     }).setOrigin(0.5));
 
     const rankColor = { S: '#ffd54f', A: '#7fd4ff', B: '#a9e07a', C: '#8899aa' };
-    const rankLabel = {
-      S: L('rankS'), A: L('rankA'), B: L('rankB'), C: L('rankC')
-    };
+    const rankLabel = { S: L('rankS'), A: L('rankA'), B: L('rankB'), C: L('rankC') };
+
     const rankText = this.add.text(W/2, 525, rank, {
       fontFamily: FONT, fontSize: '72px',
       color: rankColor[rank], fontStyle: 'bold'
@@ -1285,7 +1550,7 @@ makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
         this.tweens.killTweensOf(t._glow);
         this.tweens.add({ targets: t._glow, alpha: 0, duration: 300 });
       }
-      if (t._halo) {
+      if (t._halo){
         this.tweens.killTweensOf(t._halo);
         this.tweens.add({ targets: t._halo, alpha: 0, duration: 300 });
       }
