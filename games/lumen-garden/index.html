@@ -26,9 +26,9 @@ const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
 const SAVE_KEY = 'svetosad_save_v1';
 const LEVELS_TOTAL = 48;
 
-/* ─── Настройки портала ─── ЗАМЕНИ НА СВОИ АДРЕСА ─── */
-const PORTAL_URL = 'https://example.com';         // главный сайт
-const GAMES_URL  = 'https://example.com/games';   // каталог игр (если нужна отдельная кнопка)
+/* ─── Настройки портала  ─── */
+const PORTAL_URL = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
+const GAMES_URL  = 'https://makonnov-svg.github.io/GRODT-Studio/#games';
 
 /* Универсальный выход: сначала postMessage родителю (для iframe),
    потом редирект. Если URL не задан — history.back(). */
@@ -473,7 +473,40 @@ function makeButton(scene, x, y, w, h, label, color, onClick, fontSize){
   });
   return c;
 }
+/* Круглая кнопка с толстой стрелкой влево.
+   Параметры: scene, x, y, radius, onClick, opts (опционально цвета). */
+function makeArrowButton(scene, x, y, radius, onClick, opts){
+  opts = opts || {};
+  const c = scene.add.container(x, y);
+  const g = scene.add.graphics();
 
+  // Круг
+  g.fillStyle(opts.bg || 0x1d2c4d, 1);
+  g.fillCircle(0, 0, radius);
+  g.lineStyle(2, 0x3b5a92, 0.55);
+  g.strokeCircle(0, 0, radius);
+
+  // Толстая стрелка влево
+  const tipX   = -radius * 0.50;
+  const baseX  =  0;
+  const headH  =  radius * 0.35;
+  const shaftX =  radius * 0.50;
+  const shaftH =  radius * 0.15;
+
+  g.fillStyle(opts.fg || 0xdbe7ff, 1);
+  g.fillTriangle(tipX, 0, baseX, -headH, baseX, headH);          // наконечник
+  g.fillRect(baseX, -shaftH, shaftX - baseX, shaftH * 2);        // древко
+
+    c.add(g);
+  c.setSize(radius * 2, radius * 2);
+  c.setInteractive({ useHandCursor: true });
+  c.on('pointerdown', () => {
+    Sound.init(); Sound.ui();
+    scene.tweens.add({ targets: c, scale: 0.9, duration: 70, yoyo: true });
+    onClick();
+  });
+  return c;
+}
 /* ============================================================
    РЕКЛАМА
    ============================================================ */
@@ -544,18 +577,17 @@ class MenuScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '18px', color: '#3a5480'
     }).setOrigin(1, 1);
 
-    /* --- Кнопка выхода на портал --- */
-    makeButton(this, 80, 96, 118, 52, L('backSite'), 0x1d2c4d,
-      () => exitToPortal(PORTAL_URL), 20);
+  /* --- Кнопка выхода на портал: круглая стрелка --- */
+makeArrowButton(this, 80, 96, 26, () => exitToPortal(PORTAL_URL));
 
     /* --- Языковой переключатель (сдвинут правее) --- */
     const langStyleActive   = { fontFamily: FONT, fontSize: '26px', color: '#8fb4ee', fontStyle: 'bold' };
     const langStyleInactive = { fontFamily: FONT, fontSize: '26px', color: '#3a4a68', fontStyle: 'bold' };
 
-    const langBtnRU = this.add.text(190, 96, 'RU', langStyleInactive)
-      .setOrigin(0.5).setInteractive({ useHandCursor:true });
-    const langBtnEN = this.add.text(240, 96, 'EN', langStyleInactive)
-      .setOrigin(0.5).setInteractive({ useHandCursor:true });
+  const langBtnRU = this.add.text(W - 64, 150, 'RU', langStyleInactive)
+  .setOrigin(0.5).setInteractive({ useHandCursor:true });
+const langBtnEN = this.add.text(W - 64, 192, 'EN', langStyleInactive)
+  .setOrigin(0.5).setInteractive({ useHandCursor:true });
 
     langBtnRU.setColor(CURRENT_LANG === 'ru' ? '#8fb4ee' : '#3a4a68');
     langBtnEN.setColor(CURRENT_LANG === 'en' ? '#8fb4ee' : '#3a4a68');
@@ -802,9 +834,8 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor:true });
     back.on('pointerdown', () => { Sound.ui(); this.scene.start('menu'); });
 
-    /* Кнопка «← Сайт» — прямой выход на портал */
-    makeButton(this, 200, 96, 110, 44, L('backSite'), 0x1d2c4d,
-      () => exitToPortal(PORTAL_URL), 18);
+    /* Кнопка «← Сайт» — прямой выход на портал *//* Кнопка «← Сайт» — круглая стрелка, выход на портал */
+makeArrowButton(this, 200, 96, 22, () => exitToPortal(PORTAL_URL));
 
     this.add.text(W/2, 96, L('level') + ' ' + this.levelNum, {
       fontFamily: FONT, fontSize: '40px', color: '#e6efff', fontStyle: 'bold'
