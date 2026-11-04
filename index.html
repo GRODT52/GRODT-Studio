@@ -13,15 +13,18 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:5;back
 #bg{position:fixed;inset:0;z-index:0;pointer-events:none}
 #glow{position:fixed;left:0;top:0;width:400px;height:400px;border-radius:50%;pointer-events:none;z-index:1;background:radial-gradient(circle,rgba(160,124,255,.22),transparent 65%);transform:translate(-999px,-999px)}
 .wrap{position:relative;z-index:2;max-width:1000px;margin:0 auto;padding:0 20px}
-header{display:flex;justify-content:space-between;align-items:center;padding:22px 0}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:22px 0}
+.hright{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end}
 .logo{font-weight:900;letter-spacing:.3em;color:var(--gold);text-decoration:none;text-shadow:0 0 14px rgba(226,184,87,.6)}
 nav a{color:var(--muted);text-decoration:none;margin-left:22px;font-size:14px;transition:color .2s,text-shadow .2s}
 nav a:hover{color:var(--gold);text-shadow:0 0 12px var(--gold)}
+.lang{appearance:none;-webkit-appearance:none;background:#110d1c;color:var(--gold);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-weight:700;font-size:13px;line-height:1.2;font-family:inherit;letter-spacing:.06em;cursor:pointer;transition:border-color .3s,box-shadow .3s;max-width:160px}
+.lang:hover,.lang:focus-visible{border-color:var(--violet);box-shadow:0 0 16px rgba(160,124,255,.35);outline:none}
 .hero{position:relative;padding:70px 0 50px;text-align:center}
 .aura{position:absolute;left:50%;top:0;width:min(560px,92vw);aspect-ratio:1;translate:-50% 0;border-radius:50%;z-index:-1;pointer-events:none;background:conic-gradient(#a07cff,#ff4fa3,#e2b857,#a07cff);filter:blur(80px);opacity:.38;animation:spin 18s linear infinite,br 4s ease-in-out infinite}
 @keyframes spin{to{rotate:360deg}}
 @keyframes br{50%{scale:1.18;opacity:.55}}
-.ttl{position:relative;display:inline-block;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .2s}
+.ttl{position:relative;display:inline-block;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .2s;direction:ltr}
 .glitch{margin:0;font:900 clamp(68px,17vw,180px)/1 Georgia,"Times New Roman",serif;letter-spacing:.04em;animation:gl 5s steps(1) infinite}
 .glitch span{display:inline-block;cursor:default;background:linear-gradient(180deg,rgba(255,255,255,.4),transparent 45%,rgba(80,45,0,.4)),linear-gradient(105deg,#c9962f 0%,#e2b857 35%,#fff6cf 46%,#fff 50%,#fff6cf 54%,#e2b857 65%,#c9962f 100%);background-size:100% 100%,300% 100%;background-position:0 0,100% 0;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;transition:transform .2s;animation:glint 3.6s ease-in-out calc(var(--d)*.16s) infinite,bob 3.2s ease-in-out calc(var(--d)*.25s) infinite}
 .glitch span:hover{transform:translateY(-8px) scale(1.2) rotate(-6deg)}
@@ -30,7 +33,7 @@ nav a:hover{color:var(--gold);text-shadow:0 0 12px var(--gold)}
 @keyframes gl{0%,91%,100%,96%{filter:drop-shadow(0 0 26px rgba(226,184,87,.4));transform:none}92%{filter:drop-shadow(-6px 0 #ff4fa3) drop-shadow(6px 0 #3df5ff) drop-shadow(0 0 26px rgba(226,184,87,.4));transform:translate(4px,0) skewX(-6deg)}94%{filter:drop-shadow(6px 0 #ff4fa3) drop-shadow(-6px 0 #3df5ff) drop-shadow(0 0 26px rgba(226,184,87,.4));transform:translate(-4px,1px) skewX(5deg)}}
 .sp{position:absolute;translate:-50% -50%;pointer-events:none;font-style:normal;color:#fff6cf;text-shadow:0 0 8px var(--gold),0 0 18px var(--gold);animation:tw 1.1s ease-out forwards}
 @keyframes tw{0%{scale:0;rotate:0deg;opacity:0}30%{scale:1;opacity:1}100%{scale:0;rotate:120deg;opacity:0}}
-.studio{margin:6px 0 22px;font-size:clamp(14px,3vw,20px);letter-spacing:.9em;color:var(--violet);text-shadow:0 0 16px var(--violet);padding-left:.9em}
+.studio{margin:6px 0 22px;font-size:clamp(14px,3vw,20px);letter-spacing:.9em;color:var(--violet);text-shadow:0 0 16px var(--violet);padding-left:.9em;direction:ltr}
 .hero p{max-width:520px;margin:0 auto 30px;color:var(--muted);font-size:18px}
 .btn{position:relative;overflow:hidden;display:inline-block;padding:14px 32px;border-radius:999px;background:linear-gradient(135deg,var(--gold),#b8872a);color:#130d00;font-weight:800;text-decoration:none;animation:pulse 2.4s ease-in-out infinite;transition:transform .2s}
 .btn:hover{transform:scale(1.08) rotate(-1deg)}
@@ -55,72 +58,170 @@ h2::after{content:"";display:block;width:70px;height:4px;margin-top:10px;border-
 .card p{margin:0;color:var(--muted);font-size:15px;position:relative}
 a.card{display:block;text-decoration:none;color:inherit}
 .tag{position:relative;display:inline-block;font-size:12px;padding:3px 12px;border-radius:999px;border:1px solid var(--violet);color:var(--violet)}
+/* ——— карточки в разработке ——— */
+.card.soon{cursor:default;border-style:dashed}
+.card.soon .ic{color:var(--pink)}
+.card.soon:hover{border-color:var(--pink);box-shadow:0 0 34px rgba(255,79,163,.25)}
+.card.soon:hover::before{background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(255,79,163,.24),transparent 70%)}
+.tag.soon{color:var(--pink);border-color:var(--pink);box-shadow:0 0 14px rgba(255,79,163,.35);animation:tagpulse 2.6s ease-in-out infinite}
+@keyframes tagpulse{0%,100%{box-shadow:0 0 10px rgba(255,79,163,.25)}50%{box-shadow:0 0 22px rgba(255,79,163,.6)}}
+.rel{position:relative;display:inline-block;margin-top:16px;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);text-shadow:0 0 12px rgba(226,184,87,.45)}
+.rel::before{content:"◆";margin-right:7px;opacity:.7}
 .about{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .about div{padding:4px 0 4px 16px;border-left:3px solid var(--gold);transition:border-color .3s,transform .3s}
 .about div:hover{border-color:var(--pink);transform:translateX(6px)}
 .about b{display:block}
 .about span{color:var(--muted);font-size:15px}
+/* ——— ченджлог ——— */
+.log{position:relative;margin:0;padding:0;list-style:none}
+.log li{position:relative;padding:0 0 26px 30px;border-left:2px solid var(--line)}
+.log li:last-child{padding-bottom:0;border-left-color:transparent}
+.log li::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--gold);box-shadow:0 0 14px var(--gold)}
+.log .ver{display:inline-block;font:800 14px/1.2 Georgia,serif;letter-spacing:.08em;color:var(--gold);margin-right:8px}
+.log time{font-size:13px;color:var(--muted);letter-spacing:.04em}
+.log p{margin:6px 0 0;color:var(--muted);font-size:15px}
 footer{position:relative;z-index:2;margin-top:80px;padding:30px 20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;text-align:center}
 .js .rv{opacity:0;translate:0 36px;transition:opacity .7s,translate .7s,transform .2s,border-color .3s,box-shadow .3s;transition-delay:calc(var(--i,0)*100ms),calc(var(--i,0)*100ms),0s,0s,0s}
 .js .rv.in{opacity:1;translate:0 0}
+/* ——— RTL (иврит) ——— */
+[dir="rtl"] nav a{margin-left:0;margin-right:22px}
+[dir="rtl"] .card .ic{right:auto;left:14px}
+[dir="rtl"] .card:hover .ic{transform:rotate(-12deg) scale(1.15)}
+[dir="rtl"] .rel::before{margin-right:0;margin-left:7px}
+[dir="rtl"] .about div{padding:4px 16px 4px 0;border-left:0;border-right:3px solid var(--gold)}
+[dir="rtl"] .about div:hover{transform:translateX(-6px)}
+[dir="rtl"] .log li{padding:0 30px 26px 0;border-left:0;border-right:2px solid var(--line)}
+[dir="rtl"] .log li:last-child{border-right-color:transparent}
+[dir="rtl"] .log li::before{left:auto;right:-7px}
+[dir="rtl"] .log .ver{margin-right:0;margin-left:8px}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.js .rv{opacity:1;translate:none}}
+@media (max-width:560px){nav a{margin-left:14px;font-size:13px}.hright{gap:10px}.logo{letter-spacing:.2em}}
 </style>
 </head>
 <body>
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=114076375', 'ym');
+
+    ym(114076375, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/114076375" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
+<script>
+window.trackGoal = function(name, params){
+  if (window.ym) {
+    try { ym(114076375, 'reachGoal', name, params || {}); } catch(e){}
+  }
+};
+</script>
+
 <canvas id="bg"></canvas><div id="glow"></div>
 <div class="wrap">
 <header>
   <a class="logo" href="#top">GRODT</a>
-  <nav><a href="#games">Игры</a><a href="#about">О студии</a><a href="#contacts">Контакты</a></nav>
+  <div class="hright">
+    <nav>
+      <a href="#games" data-i18n="navGames">Игры</a>
+      <a href="#about" data-i18n="navAbout">О студии</a>
+      <a href="#changelog" data-i18n="navChangelog">Ченджлог</a>
+      <a href="#contacts" data-i18n="navContacts">Контакты</a>
+    </nav>
+    <select class="lang" id="lang" aria-label="Language / Язык / Idioma / שפה / 语言">
+      <option value="ru">Русский</option>
+      <option value="en">English</option>
+      <option value="es">Español</option>
+      <option value="he">עברית</option>
+      <option value="zh">简体中文</option>
+    </select>
+  </div>
 </header>
 
 <section class="hero" id="top">
   <div class="aura"></div>
   <div class="ttl"><h1 class="glitch" aria-label="GRODT"><span style="--d:0">G</span><span style="--d:1">R</span><span style="--d:2">O</span><span style="--d:3">D</span><span style="--d:4">T</span></h1></div>
   <div class="studio">STUDIO</div>
-  <p>Браузерные головоломки и хардкорные платформеры. Играйте без установки.</p>
-  <a class="btn" href="#games">Смотреть игры</a>
+  <p data-i18n="heroText">Браузерные головоломки, симуляции и творческие инструменты. Играйте без установки.</p>
+  <a class="btn" href="#games" data-i18n="heroBtn">Смотреть игры</a>
   <div class="tick"><div id="tk">NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>ИГРАЙ В БРАУЗЕРЕ<span>◆</span></div></div>
 </section>
 
 <section id="games">
-  <h2 class="rv">Наши игры</h2>
+  <h2 class="rv" data-i18n="gamesTitle">Наши игры</h2>
   <div class="grid">
     <a class="card rv" style="--i:0" href="games/neon-run/index.html"><span class="ic">▲</span>
-      <span class="tag">Платформер</span>
+      <span class="tag" data-i18n="tagPlatformer">Платформер</span>
       <h3>Neon Runner</h3>
-      <p>Хардкорный неоновый платформер. 9 уровней, шипы, пилы и кристаллы.</p>
+      <p data-i18n="neonDesc">Хардкорный неоновый платформер. 9 уровней, шипы, пилы и кристаллы.</p>
     </a>
     <a class="card rv" style="--i:1" href="games/lumen-garden/index.html"><span class="ic">✦</span>
-      <span class="tag">Головоломка</span>
+      <span class="tag" data-i18n="tagPuzzle">Головоломка</span>
       <h3>Lumen Garden</h3>
-      <p>Проведите свет к бутонам, вращая плитки. 48 уровней.</p>
+      <p data-i18n="lumenDesc">Проведите свет к бутонам, вращая плитки. 48 уровней.</p>
     </a>
     <a class="card rv" style="--i:2" href="games/ball-sort/index.html"><span class="ic">●</span>
-      <span class="tag">Сортировка</span>
+      <span class="tag" data-i18n="tagSort">Сортировка</span>
       <h3>Ball Sort</h3>
-      <p>Рассортируйте шарики по пробиркам. Бесконечные уровни.</p>
+      <p data-i18n="ballDesc">Рассортируйте шарики по пробиркам. Бесконечные уровни.</p>
     </a>
     <a class="card rv" style="--i:3" href="games/firefly-garden/index.html"><span class="ic">✧</span>
-      <span class="tag">Головоломка</span>
+      <span class="tag" data-i18n="tagPuzzle">Головоломка</span>
       <h3>Firefly Garden</h3>
-      <p>Соединяйте пары огоньков, не пересекая пути.</p>
+      <p data-i18n="fireflyDesc">Соединяйте пары огоньков, не пересекая пути.</p>
     </a>
+
+    <!-- новые проекты в разработке -->
+    <div class="card soon rv" style="--i:4"><span class="ic">▦</span>
+      <span class="tag soon" data-i18n="soonTag">В разработке</span>
+      <h3>Game of Life</h3>
+      <p data-i18n="lifeDesc">Клеточный автомат Конвея: рисуйте колонии и смотрите, как из точек рождается жизнь.</p>
+      <span class="rel" data-i18n="release">Релиз 5 ноября</span>
+    </div>
+    <div class="card soon rv" style="--i:5"><span class="ic">✳</span>
+      <span class="tag soon" data-i18n="soonTag">В разработке</span>
+      <h3>String Art Studio</h3>
+      <p data-i18n="artDesc">Приложение для стринг-арта: постройте схему, расставьте гвозди и натяните нити.</p>
+      <span class="rel" data-i18n="release">Релиз 5 ноября</span>
+    </div>
   </div>
 </section>
 
 <section id="about">
-  <h2 class="rv">О студии</h2>
+  <h2 class="rv" data-i18n="aboutTitle">О студии</h2>
   <div class="about">
-    <div class="rv" style="--i:0"><b>Без установки</b><span>Играйте в браузере на телефоне и ПК.</span></div>
-    <div class="rv" style="--i:1"><b>С характером</b><span>У каждой игры свой стиль и звук.</span></div>
-    <div class="rv" style="--i:2"><b>Яндекс Игры</b><span>Наши игры выходят на Яндекс Играх.</span></div>
+    <div class="rv" style="--i:0"><b data-i18n="about1Title">Без установки</b><span data-i18n="about1Text">Играйте в браузере на телефоне и ПК.</span></div>
+    <div class="rv" style="--i:1"><b data-i18n="about2Title">Внимание к деталям</b><span data-i18n="about2Text">Проработанный дизайн и атмосфера в каждом проекте.</span></div>
+    <div class="rv" style="--i:2"><b data-i18n="about3Title">Разные жанры</b><span data-i18n="about3Text">От классических головоломок до симуляций и творческих инструментов.</span></div>
   </div>
 </section>
 
+<section id="changelog">
+  <h2 class="rv" data-i18n="changelogTitle">Ченджлог</h2>
+  <ol class="log">
+    <li class="rv" style="--i:0">
+      <span class="ver">v1.3</span><time datetime="2026-11-04" data-date>4 ноября 2026</time>
+      <p data-i18n="log1Body">Анонсированы проекты в разработке (Game of Life и String Art Studio). Локализация на 4 языка, раздел ченджлога и аналитика Яндекс Метрики.</p>
+    </li>
+    <li class="rv" style="--i:1">
+      <span class="ver">v1.2</span><time datetime="2026-11-03" data-date>3 ноября 2026</time>
+      <p data-i18n="log2Body">Релиз Neon Runner — хардкорного неонового платформера с 9 уровнями.</p>
+    </li>
+    <li class="rv" style="--i:2">
+      <span class="ver">v1.1</span><time datetime="2026-11-02" data-date>2 ноября 2026</time>
+      <p data-i18n="log3Body">Запуск сайта GRODT Studio и первых трёх браузерных игр: Lumen Garden, Ball Sort и Firefly Garden.</p>
+    </li>
+  </ol>
+</section>
+
 <section id="contacts">
-  <h2 class="rv">Контакты</h2>
-  <p class="rv" style="color:var(--muted)">Контакты появятся здесь скоро.</p>
+  <h2 class="rv" data-i18n="contactsTitle">Контакты</h2>
+  <p class="rv" style="color:var(--muted)" data-i18n="contactsText">Контакты появятся здесь скоро.</p>
 </section>
 </div>
 <footer>© <span id="y">2026</span> GRODT Studio</footer>
@@ -128,9 +229,200 @@ footer{position:relative;z-index:2;margin-top:80px;padding:30px 20px;border-top:
 <script>
 document.documentElement.classList.add('js');
 document.getElementById('y').textContent=new Date().getFullYear();
-var tk=document.getElementById('tk');tk.innerHTML=tk.innerHTML.repeat(4);
-var still=matchMedia('(prefers-reduced-motion:reduce)').matches;
-var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.15});
+
+/* ——— ЛОКАЛИЗАЦИЯ ——— */
+var I18N = {
+  ru: {
+    pageTitle: 'GRODT Studio — браузерные игры',
+    navGames: 'Игры', navAbout: 'О студии', navChangelog: 'Ченджлог', navContacts: 'Контакты',
+    heroText: 'Браузерные головоломки, симуляции и творческие инструменты. Играйте без установки.',
+    heroBtn: 'Смотреть игры',
+    ticker: 'NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>ИГРАЙ В БРАУЗЕРЕ<span>◆</span>',
+    gamesTitle: 'Наши игры',
+    tagPlatformer: 'Платформер', tagPuzzle: 'Головоломка', tagSort: 'Сортировка',
+    neonDesc: 'Хардкорный неоновый платформер. 9 уровней, шипы, пилы и кристаллы.',
+    lumenDesc: 'Проведите свет к бутонам, вращая плитки. 48 уровней.',
+    ballDesc: 'Рассортируйте шарики по пробиркам. Бесконечные уровни.',
+    fireflyDesc: 'Соединяйте пары огоньков, не пересекая пути.',
+    soonTag: 'В разработке',
+    lifeDesc: 'Клеточный автомат Конвея: рисуйте колонии и смотрите, как из точек рождается жизнь.',
+    artDesc: 'Приложение для стринг-арта: постройте схему, расставьте гвозди и натяните нити.',
+    release: 'Релиз 5 ноября',
+    aboutTitle: 'О студии',
+    about1Title: 'Без установки', about1Text: 'Играйте в браузере на телефоне и ПК.',
+    about2Title: 'Внимание к деталям', about2Text: 'Проработанный дизайн и атмосфера в каждом проекте.',
+    about3Title: 'Разные жанры', about3Text: 'От классических головоломок до симуляций и творческих инструментов.',
+    changelogTitle: 'Ченджлог',
+    log1Body: 'Анонсированы проекты в разработке (Game of Life и String Art Studio). Локализация на 4 языка, раздел ченджлога и аналитика Яндекс Метрики.',
+    log2Body: 'Релиз Neon Runner — хардкорного неонового платформера с 9 уровнями.',
+    log3Body: 'Запуск сайта GRODT Studio и первых трёх браузерных игр: Lumen Garden, Ball Sort и Firefly Garden.',
+    contactsTitle: 'Контакты', contactsText: 'Контакты появятся здесь скоро.'
+  },
+  en: {
+    pageTitle: 'GRODT Studio — browser games',
+    navGames: 'Games', navAbout: 'About', navChangelog: 'Changelog', navContacts: 'Contacts',
+    heroText: 'Browser puzzles, simulations, and creative tools. Play with no install.',
+    heroBtn: 'View games',
+    ticker: 'NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>PLAY IN YOUR BROWSER<span>◆</span>',
+    gamesTitle: 'Our games',
+    tagPlatformer: 'Platformer', tagPuzzle: 'Puzzle', tagSort: 'Sorting',
+    neonDesc: 'Hardcore neon platformer. 9 levels, spikes, saws, and crystals.',
+    lumenDesc: 'Guide the light to the buds by rotating tiles. 48 levels.',
+    ballDesc: 'Sort the balls into test tubes. Endless levels.',
+    fireflyDesc: 'Connect pairs of fireflies without crossing paths.',
+    soonTag: 'In development',
+    lifeDesc: "Conway's cellular automaton: draw colonies and watch life emerge from dots.",
+    artDesc: 'A string art app: build a pattern, place the nails and stretch the threads.',
+    release: 'Release November 5',
+    aboutTitle: 'About the studio',
+    about1Title: 'No install', about1Text: 'Play in your browser on phone and PC.',
+    about2Title: 'Attention to detail', about2Text: 'Thoughtful design and atmosphere in every project.',
+    about3Title: 'Variety of genres', about3Text: 'From classic puzzles to simulations and creative tools.',
+    changelogTitle: 'Changelog',
+    log1Body: 'Announced upcoming projects (Game of Life and String Art Studio). Added 4 localizations, a changelog section and Yandex Metrica analytics.',
+    log2Body: 'Released Neon Runner — a hardcore neon platformer with 9 levels.',
+    log3Body: 'Launched the GRODT Studio website and the first three browser games: Lumen Garden, Ball Sort and Firefly Garden.',
+    contactsTitle: 'Contacts', contactsText: 'Contacts will appear here soon.'
+  },
+  es: {
+    pageTitle: 'GRODT Studio — juegos para navegador',
+    navGames: 'Juegos', navAbout: 'Estudio', navChangelog: 'Cambios', navContacts: 'Contacto',
+    heroText: 'Puzles, simulaciones y herramientas creativas para navegador. Juega sin instalar nada.',
+    heroBtn: 'Ver juegos',
+    ticker: 'NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>JUEGA EN EL NAVEGADOR<span>◆</span>',
+    gamesTitle: 'Nuestros juegos',
+    tagPlatformer: 'Plataformas', tagPuzzle: 'Puzle', tagSort: 'Clasificación',
+    neonDesc: 'Plataformas de neón hardcore. 9 niveles, pinchos, sierras y cristales.',
+    lumenDesc: 'Guía la luz hasta los capullos girando las piezas. 48 niveles.',
+    ballDesc: 'Clasifica las bolas en los tubos de ensayo. Niveles infinitos.',
+    fireflyDesc: 'Conecta parejas de luciérnagas sin cruzar los caminos.',
+    soonTag: 'En desarrollo',
+    lifeDesc: 'Autómata celular de Conway: dibuja colonias y observa cómo nace la vida de los puntos.',
+    artDesc: 'App de string art: crea el esquema, coloca los clavos y tensa los hilos.',
+    release: 'Lanzamiento 5 de noviembre',
+    aboutTitle: 'Sobre el estudio',
+    about1Title: 'Sin instalación', about1Text: 'Juega en el navegador en el móvil y el PC.',
+    about2Title: 'Atención al detalle', about2Text: 'Diseño y atmósfera cuidados en cada proyecto.',
+    about3Title: 'Variedad de géneros', about3Text: 'Desde puzles clásicos hasta simulaciones y herramientas creativas.',
+    changelogTitle: 'Registro de cambios',
+    log1Body: 'Anunciados proyectos en desarrollo (Game of Life y String Art Studio). Añadidas 4 traducciones, sección de cambios y analítica de Yandex Metrica.',
+    log2Body: 'Lanzamiento de Neon Runner — un plataformas de neón hardcore con 9 niveles.',
+    log3Body: 'Lanzamiento del sitio de GRODT Studio y los primeros tres juegos de navegador: Lumen Garden, Ball Sort y Firefly Garden.',
+    contactsTitle: 'Contacto', contactsText: 'Los datos de contacto aparecerán aquí pronto.'
+  },
+  he: {
+    pageTitle: 'GRODT Studio — משחקי דפדפן',
+    navGames: 'משחקים', navAbout: 'אודות', navChangelog: 'יומן שינויים', navContacts: 'צור קשר',
+    heroText: 'פאזלים, סימולציות וכלים יצירתיים בדפדפן. שחקו בלי להתקין.',
+    heroBtn: 'לצפייה במשחקים',
+    ticker: 'NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>שחקו בדפדפן<span>◆</span>',
+    gamesTitle: 'המשחקים שלנו',
+    tagPlatformer: 'פלטפורמר', tagPuzzle: 'פאזל', tagSort: 'מיון',
+    neonDesc: 'פלטפורמר ניאון אתגרי. 9 שלבים, קוצים, מסורים וקריסטלים.',
+    lumenDesc: 'הובילו את האור אל הניצנים בעזרת סיבוב האריחים. 48 שלבים.',
+    ballDesc: 'מיינו את הכדורים למבחנות. שלבים אינסופיים.',
+    fireflyDesc: 'חברו זוגות של גחליליות בלי לחצות מסלולים.',
+    soonTag: 'בפיתוח',
+    lifeDesc: 'אוטומט תאי של קונוויי: ציירו מושבות וראו איך נולדים חיים מנקודות.',
+    artDesc: 'אפליקציית סטרינג ארט: בנו סכימה, קבעו מסמרים ומתחו חוטים.',
+    release: 'יציאה לאור ב־5 בנובמבר',
+    aboutTitle: 'אודות הסטודיו',
+    about1Title: 'בלי התקנה', about1Text: 'שחקו בדפדפן בטלפון ובמחשב.',
+    about2Title: 'תשומת לב לפרטים', about2Text: 'עיצוב ואווירה מוקפדים בכל פרויקט.',
+    about3Title: 'מגוון ז\'אנרים', about3Text: 'מפאזלים קלאסיים ועד סימולציות וכלים יצירתיים.',
+    changelogTitle: 'יומן שינויים',
+    log1Body: 'הוכרזו פרויקטים בפיתוח (Game of Life ו-String Art Studio). נוספו 4 שפות, יומן שינויים וניתוח Yandex Metrica.',
+    log2Body: 'יצא לאור Neon Runner — פלטפורמר ניאון אתגרי עם 9 שלבים.',
+    log3Body: 'השקת אתר GRODT Studio ושלושת משחקי הדפדפן הראשונים: Lumen Garden, Ball Sort ו-Firefly Garden.',
+    contactsTitle: 'צור קשר', contactsText: 'פרטי הקשר יופיעו כאן בקרוב.'
+  },
+  zh: {
+    pageTitle: 'GRODT Studio — 浏览器游戏',
+    navGames: '游戏', navAbout: '关于', navChangelog: '更新日志', navContacts: '联系',
+    heroText: '浏览器解谜、模拟与创意工具，无需安装即可游玩。',
+    heroBtn: '查看游戏',
+    ticker: 'NEON RUNNER<span>▲</span>Lumen Garden<span>✦</span>PUZZLE FLOW<span>●</span>Firefly Garden<span>✧</span>在浏览器中畅玩<span>◆</span>',
+    gamesTitle: '我们的游戏',
+    tagPlatformer: '平台跳跃', tagPuzzle: '解谜', tagSort: '分类',
+    neonDesc: '硬核霓虹平台跳跃游戏。9 个关卡，包含尖刺、锯片和水晶。',
+    lumenDesc: '旋转方块，将光引导到花蕾。48 个关卡。',
+    ballDesc: '将小球分拣到试管中。无限关卡。',
+    fireflyDesc: '连接成对的萤火虫，路径不可交叉。',
+    soonTag: '开发中',
+    lifeDesc: '康威生命游戏：绘制细胞群落，看生命如何从点中诞生。',
+    artDesc: '弦丝画应用：绘制图案、钉上钉子、拉紧丝线。',
+    release: '11月5日发布',
+    aboutTitle: '关于工作室',
+    about1Title: '无需安装', about1Text: '在手机和电脑的浏览器中游玩。',
+    about2Title: '注重细节', about2Text: '每个项目都经过精心设计与氛围营造。',
+    about3Title: '多样类型', about3Text: '从经典解谜到模拟与创意工具。',
+    changelogTitle: '更新日志',
+    log1Body: '公布开发中项目（Game of Life 与 String Art Studio）。新增 4 种语言、更新日志板块及 Yandex Metrica 分析。',
+    log2Body: '发布 Neon Runner —— 包含 9 个关卡的硬核霓虹平台跳跃游戏。',
+    log3Body: 'GRODT Studio 网站及首批三款浏览器游戏上线：Lumen Garden、Ball Sort 和 Firefly Garden。',
+    contactsTitle: '联系方式', contactsText: '联系方式即将在此公布。'
+  }
+};
+
+var LOCALES = {ru:'ru-RU', en:'en-US', es:'es-ES', he:'he-IL', zh:'zh-CN'};
+var tk = document.getElementById('tk');
+var langSel = document.getElementById('lang');
+
+function updateDates(lang){
+  var locale = LOCALES[lang] || lang;
+  document.querySelectorAll('time[data-date]').forEach(function(t){
+    var iso = t.getAttribute('data-date');
+    var d = new Date(iso + 'T00:00:00');
+    if (!isNaN(d)) {
+      try {
+        t.textContent = new Intl.DateTimeFormat(locale, {day:'numeric', month:'long', year:'numeric'}).format(d);
+      } catch(e) { t.textContent = iso; }
+    }
+  });
+}
+
+function applyLang(lang){
+  if(!I18N[lang]) lang = 'ru';
+  var d = I18N[lang];
+  document.documentElement.lang = (lang === 'zh') ? 'zh-CN' : lang;
+  document.documentElement.dir = (lang === 'he') ? 'rtl' : 'ltr';
+  document.title = d.pageTitle;
+
+  var els = document.querySelectorAll('[data-i18n]');
+  for(var i = 0; i < els.length; i++){
+    var key = els[i].getAttribute('data-i18n');
+    if(d[key] != null) els[i].textContent = d[key];
+  }
+  tk.innerHTML = d.ticker.repeat(4);
+  updateDates(lang);
+  langSel.value = lang;
+  try { localStorage.setItem('grodt-lang', lang); } catch(e){}
+}
+
+var saved = null;
+try { saved = localStorage.getItem('grodt-lang'); } catch(e){}
+var auto = (navigator.language || 'ru').toLowerCase();
+var guess = auto.indexOf('zh') === 0 ? 'zh' : auto.slice(0, 2);
+if(!I18N[guess]) guess = 'ru';
+applyLang(saved && I18N[saved] ? saved : guess);
+
+langSel.addEventListener('change', function(){
+  applyLang(langSel.value);
+  trackGoal('lang_change', {lang: langSel.value});
+});
+
+/* ——— ЦЕЛИ МЕТРИКИ ——— */
+document.querySelectorAll('a.card').forEach(function(a){
+  a.addEventListener('click', function(){
+    trackGoal('game_open', {href: a.getAttribute('href')});
+  });
+});
+var cta = document.querySelector('.btn');
+if(cta) cta.addEventListener('click', function(){ trackGoal('cta_games_click'); });
+
+/* ——— АНИМАЦИИ / ЭФФЕКТЫ ——— */
+var still = matchMedia('(prefers-reduced-motion:reduce)').matches;
+var io = new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.15});
 document.querySelectorAll('.rv').forEach(function(el){io.observe(el)});
 document.querySelectorAll('.card').forEach(function(c){
   c.addEventListener('pointermove',function(e){var r=c.getBoundingClientRect(),px=(e.clientX-r.left)/r.width,py=(e.clientY-r.top)/r.height;
