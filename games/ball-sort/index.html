@@ -4,10 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 <title>Puzzle Flow — Ball Sort</title>
+
+
+
+
+
 <style>
+@font-face {
+  font-family: 'RussoOne';
+  src: url('./RussoOne-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+
+
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100%; height:100%; overflow:hidden; background:#0f3460;
-  font-family: 'Nunito', 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+html, body { width:100%; height:100%; overflow:hidden; background:#0a0a10;
+  font-family: 'RussoOne', sans-serif;
   touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
 #game { width:100%; height:100%; }
 canvas { display:block; }
@@ -16,13 +31,8 @@ canvas { display:block; }
   z-index:99999; white-space:pre-wrap; display:none; border-top:2px solid #ffb3c1; }
 #err-overlay h3 { margin:0 0 6px; font-size:15px; }
 #err-overlay .close { position:absolute; top:6px; right:10px; cursor:pointer; color:#ffdde4; font-size:18px; }
-</style>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap"
-  onerror="this.onerror=null;this.href='https://fonts.bunny.net/css?family=nunito:700,800,900'">
+</style>
 </head>
 <body>
 <div id="game"></div>
@@ -68,16 +78,20 @@ canvas { display:block; }
 
 <script>
 'use strict';
+/* PF_FONT_MODERATE_APPLIED */
 
 const Core = {};
-Core.FONT = 'Nunito, "Segoe UI", "Trebuchet MS", sans-serif';
-
+// ИСПОЛЬЗУЕМ RUBIK
+Core.FONT = "'RussoOne', sans-serif";
+Core.PF_BUILD = 'ACHCAL-20261111_204233';
+Core.TEST_OBSIDIAN = false;
 Core.DEFAULT_SAVE = {
-  level: 1, totalScore: 0, coins: 100, hintsOwned: 3,
+  level: 1, totalScore: 0, coins: 150, hintsOwned: 3, shufflesOwned: 2, // ДОБАВИЛИ SHUFFLES
   bestScores: {}, bestStars: {}, ownedSkins: ['classic'], currentSkin: 'classic',
   lastDailyBonus: 0, totalLevelsCompleted: 0,
   achievements: {}, dailyDate: 0, dailyStars: 0,
-  ownedBallSkins: ['classic'], currentBallSkin: 'classic'
+  ownedBallSkins: ['classic'], currentBallSkin: 'classic',
+  dailyHistory: {}, monthlyRewards: {}, upgrades: {}
 };
 
 function mulberry32(a) {
@@ -88,6 +102,30 @@ function mulberry32(a) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+
+function pfYMD(y, m, d) { return y * 10000 + (m + 1) * 100 + d; }
+function pfMonthKey(dateStr) { return Math.floor(dateStr / 100); }
+function pfTodayMonthKey() { const d = new Date(); return d.getFullYear() * 100 + (d.getMonth() + 1); }
+function pfDaysInMonth(monthKey) {
+  const y = Math.floor(monthKey / 100), m = monthKey % 100;
+  return new Date(y, m, 0).getDate();
+}
+function pfMonthLabel(monthKey) {
+  const names = ['ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ','ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
+  const y = Math.floor(monthKey / 100), m = monthKey % 100;
+  return names[m - 1] + ' ' + y;
+}
+
+
+function pfMonthStars(monthKey) {
+  const h = Core.SDK.get('dailyHistory', {});
+  let sum = 0;
+  Object.keys(h).forEach(function (k) {
+    if (Math.floor(Number(k) / 100) === monthKey) sum += (h[k] && h[k].bestStars) || 0;
+  });
+  return sum;
+}
+
 function todayStr() {
   const d = new Date();
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
@@ -117,6 +155,16 @@ Core.SDK = {
   migrate() {
     const d = Core.DEFAULT_SAVE;
     for (const k in d) if (this.saveData[k] === undefined) this.saveData[k] = JSON.parse(JSON.stringify(d[k]));
+    if (!this.saveData.dailyHistory) this.saveData.dailyHistory = {};
+    if (!this.saveData.monthlyRewards) this.saveData.monthlyRewards = {};
+    if (!this.saveData.upgrades) this.saveData.upgrades = {};
+    if (!this.saveData.achClaimed) this.saveData.achClaimed = {};
+    if (!Array.isArray(this.saveData.achievements)) {
+      const v = this.saveData.achievements;
+      const arr = [];
+      if (v && typeof v === 'object') Object.keys(v).forEach(function (k) { if (v[k]) arr.push(String(k)); });
+      this.saveData.achievements = arr;
+    }
   },
   async save(patch) {
     Object.assign(this.saveData, patch);
@@ -146,35 +194,137 @@ Core.SDK = {
 };
 
 Core.Achievements = {
-  list: [
-    { id: 'first_win',    icon: '🏆', name: 'Первая победа',   desc: 'Пройди первый уровень' },
-    { id: 'three_stars',  icon: '⭐', name: 'Идеально',         desc: 'Получи 3 звезды на уровне' },
-    { id: 'combo_10',     icon: '🔥', name: 'Серия x10',        desc: 'Доведи комбо до 10' },
-    { id: 'ten_levels',   icon: '🎯', name: 'Десятка',          desc: 'Пройди 10 уровней' },
-    { id: 'fifty_levels', icon: '💎', name: 'Полсотни',         desc: 'Пройди 50 уровней' },
-    { id: 'daily_done',   icon: '🎁', name: 'Ежедневный',       desc: 'Пройди ежедневный вызов' },
-    { id: 'rich',         icon: '💰', name: 'Богач',            desc: 'Накопи 1000 монет' },
-    { id: 'all_skins',    icon: '🎨', name: 'Коллекционер',     desc: 'Собери все скины' }
-  ],
-  unlock: function (id) {
-    const cur = Core.SDK.get('achievements', {});
-    if (cur[id]) return false;
-    cur[id] = Date.now();
-    Core.SDK.save({ achievements: cur });
-    return true;
+  rewardFor: function (id) {
+    const map = {
+      first_win: { coins: 50 },
+      lvl_10: { coins: 100 },
+      lvl_25: { coins: 250 },
+      lvl_50: { coins: 500 },
+      lvl_100: { coins: 1000 },
+      score_10k: { coins: 150 },
+      score_50k: { coins: 500 },
+      coins_500: { hints: 2 },
+      coins_2000: { hints: 5 },
+      perfect_5: { coins: 100, hints: 1 },
+      perfect_20: { coins: 300, hints: 3 },
+      stars_100: { coins: 400 },
+      daily_first: { coins: 50 },
+      daily_7: { coins: 150 },
+      daily_30: { coins: 500, hints: 5 },
+      month_stars_30: { coins: 300 },
+      collector: { coins: 200 },
+      upgrades_1: { coins: 50 },
+      upgrades_all: { coins: 500 },
+      record_10: { coins: 200 }
+    };
+    return map[id] || {};
   },
-  isUnlocked: function (id) { return !!Core.SDK.get('achievements', {})[id]; },
+  rewardLabel: function (r) {
+    const parts = [];
+    if (r.coins) parts.push('+' + r.coins + ' 🪙');
+    if (r.hints) parts.push('+' + r.hints + ' 💡');
+    return parts.join('  ') || 'награда';
+  },
+  stats: function () {
+    return {
+      totalLevelsCompleted: Core.SDK.get('totalLevelsCompleted', 0),
+      totalScore: Core.SDK.get('totalScore', 0),
+      coins: Core.SDK.get('coins', 0),
+      bestStars: Core.SDK.get('bestStars', {}),
+      bestScores: Core.SDK.get('bestScores', {}),
+      dailyHistory: Core.SDK.get('dailyHistory', {}),
+      ownedSkins: Core.SDK.get('ownedSkins', ['classic']),
+      upgrades: Core.SDK.get('upgrades', {})
+    };
+  },
+  starCount: function (s) { return Object.values(s.bestStars || {}).reduce(function (a, b) { return a + (b || 0); }, 0); },
+  perfectCount: function (s) { return Object.values(s.bestStars || {}).filter(function (x) { return x >= 3; }).length; },
+  dailyCount: function (s) { return Object.keys(s.dailyHistory || {}).length; },
+  recordCount: function (s) { return Object.keys(s.bestScores || {}).length; },
+  upgradeCount: function (s) { return Object.keys(s.upgrades || {}).filter(function (k) { return s.upgrades[k]; }).length; },
+  bestMonthStars: function (s) {
+    const totals = {}; const h = s.dailyHistory || {};
+    Object.keys(h).forEach(function (k) { const mk = Math.floor(Number(k) / 100); totals[mk] = (totals[mk] || 0) + ((h[k] && h[k].bestStars) || 0); });
+    let m = 0; Object.keys(totals).forEach(function (k) { if (totals[k] > m) m = totals[k]; }); return m;
+  },
+  list: [
+    { id: 'first_win', title: 'Первая победа', desc: 'Пройди 1 уровень', goal: 1, value: function (s) { return s.totalLevelsCompleted; } },
+    { id: 'lvl_10', title: 'Разогрев', desc: 'Пройди 10 уровней', goal: 10, value: function (s) { return s.totalLevelsCompleted; } },
+    { id: 'lvl_25', title: 'В ударе', desc: 'Пройди 25 уровней', goal: 25, value: function (s) { return s.totalLevelsCompleted; } },
+    { id: 'lvl_50', title: 'Мастер', desc: 'Пройди 50 уровней', goal: 50, value: function (s) { return s.totalLevelsCompleted; } },
+    { id: 'lvl_100', title: 'Легенда', desc: 'Пройди 100 уровней', goal: 100, value: function (s) { return s.totalLevelsCompleted; } },
+    { id: 'score_10k', title: '10 000 очков', desc: 'Набери 10 000 очков', goal: 10000, value: function (s) { return s.totalScore; } },
+    { id: 'score_50k', title: '50 000 очков', desc: 'Набери 50 000 очков', goal: 50000, value: function (s) { return s.totalScore; } },
+    { id: 'coins_500', title: 'Кошелёк', desc: 'Накопи 500 монет', goal: 500, value: function (s) { return s.coins; } },
+    { id: 'coins_2000', title: 'Богач', desc: 'Накопи 2000 монет', goal: 2000, value: function (s) { return s.coins; } },
+    { id: 'perfect_5', title: 'Перфекционист', desc: '5 уровней на 3★', goal: 5, value: function (s) { return Core.Achievements.perfectCount(s); } },
+    { id: 'perfect_20', title: 'Звёздный', desc: '20 уровней на 3★', goal: 20, value: function (s) { return Core.Achievements.perfectCount(s); } },
+    { id: 'stars_100', title: 'Созвездие', desc: 'Собери 100★ на уровнях', goal: 100, value: function (s) { return Core.Achievements.starCount(s); } },
+    { id: 'daily_first', title: 'Первый вызов', desc: 'Пройди 1 вызов', goal: 1, value: function (s) { return Core.Achievements.dailyCount(s); } },
+    { id: 'daily_7', title: 'Неделя силы', desc: 'Пройди 7 вызовов', goal: 7, value: function (s) { return Core.Achievements.dailyCount(s); } },
+    { id: 'daily_30', title: 'Месяц силы', desc: 'Пройди 30 вызовов', goal: 30, value: function (s) { return Core.Achievements.dailyCount(s); } },
+    { id: 'month_stars_30', title: 'ЗОЛОТО МЕСЯЦА', desc: '30★ в одном месяце', goal: 30, value: function (s) { return Core.Achievements.bestMonthStars(s); } },
+    { id: 'collector', title: 'Коллекционер', desc: '4 скина колб', goal: 4, value: function (s) { return (s.ownedSkins || []).length; } },
+    { id: 'upgrades_1', title: 'Первый апгрейд', desc: 'Купи 1 улучшение', goal: 1, value: function (s) { return Core.Achievements.upgradeCount(s); } },
+    { id: 'upgrades_all', title: 'Всё прокачано', desc: 'Купи 3 улучшения', goal: 3, value: function (s) { return Core.Achievements.upgradeCount(s); } },
+    { id: 'record_10', title: 'Рекордсмен', desc: '10 рекордов на уровнях', goal: 10, value: function (s) { return Core.Achievements.recordCount(s); } }
+  ],
+  unlocked: function () {
+    const v = Core.SDK.get('achievements', []);
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') {
+      const arr = [];
+      Object.keys(v).forEach(function (k) { if (v[k]) arr.push(String(k)); });
+      Core.SDK.save({ achievements: arr });
+      return arr;
+    }
+    Core.SDK.save({ achievements: [] });
+    return [];
+  },
+  claimed: function () {
+    const v = Core.SDK.get('achClaimed', {});
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+    return {};
+  },
+  isClaimed: function (id) { return !!this.claimed()[id]; },
   count: function () {
-    const a = Core.SDK.get('achievements', {});
-    return Object.keys(a).length;
+    const un = this.unlocked();
+    return this.list.filter(function (a) { return un.indexOf(a.id) >= 0; }).length;
+  },
+  progress: function (a, s) {
+    const v = Math.min(a.goal, (typeof a.value === 'function') ? (a.value(s) || 0) : 0);
+    return { cur: v, goal: a.goal, done: v >= a.goal };
+  },
+  sync: function () {
+    const s = this.stats();
+    const un = this.unlocked().slice();
+    const cl = this.claimed();
+    const newly = [];
+    this.list.forEach(function (a) {
+      if (un.indexOf(a.id) < 0 && (a.value(s) || 0) >= a.goal) {
+        un.push(a.id);
+        newly.push(a);
+        if (!cl[a.id]) {
+          const r = Core.Achievements.rewardFor(a.id);
+          const patch = {};
+          if (r.coins) patch.coins = Core.SDK.get('coins', 0) + r.coins;
+          if (r.hints) patch.hintsOwned = Core.SDK.get('hintsOwned', 0) + r.hints;
+          cl[a.id] = Date.now();
+          patch.achClaimed = cl;
+          if (Object.keys(patch).length) Core.SDK.save(patch);
+        }
+      }
+    });
+    if (newly.length && un.length !== this.unlocked().length) Core.SDK.save({ achievements: un });
+    return newly;
   }
 };
 
 Core.Skins = {
   tubes: {
-    classic: { name: 'Классика', price: 0,   stroke: 0xffffff, fill: 0xffffff, strokeAlpha: 0.4,  fillAlpha: 0.04, lineWidth: 3, activeStroke: 0x4ecca3, activeFill: 0x4ecca3, activeFillAlpha: 0.15 },
-    glass:   { name: 'Стекло',   price: 150, stroke: 0xa0e8ff, fill: 0xa0e8ff, strokeAlpha: 0.75, fillAlpha: 0.12, lineWidth: 3, activeStroke: 0x4ecca3, activeFill: 0x4ecca3, activeFillAlpha: 0.2 },
-    metal:   { name: 'Металл',   price: 200, stroke: 0xc8d0d8, fill: 0x8899a8, strokeAlpha: 0.95, fillAlpha: 0.22, lineWidth: 4, activeStroke: 0x7fd4c1, activeFill: 0x7fd4c1, activeFillAlpha: 0.25 },
+    classic: { name: 'Классика', price: 0,   stroke: 0xffffff, fill: 0xffffff, strokeAlpha: 0.4,  fillAlpha: 0.04, lineWidth: 3, activeStroke: 0xd4af37, activeFill: 0xd4af37, activeFillAlpha: 0.15 },
+    glass:   { name: 'Стекло',   price: 150, stroke: 0xa0e8ff, fill: 0xa0e8ff, strokeAlpha: 0.75, fillAlpha: 0.12, lineWidth: 3, activeStroke: 0xd4af37, activeFill: 0xd4af37, activeFillAlpha: 0.2 },
+    metal:   { name: 'Металл',   price: 200, stroke: 0xc8d0d8, fill: 0x8899a8, strokeAlpha: 0.95, fillAlpha: 0.22, lineWidth: 4, activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.25 },
     wood:    { name: 'Дерево',   price: 250, stroke: 0xc69050, fill: 0x7a4a20, strokeAlpha: 1,    fillAlpha: 0.4,  lineWidth: 5, activeStroke: 0xffb84d, activeFill: 0xffb84d, activeFillAlpha: 0.3 }
   }
 };
@@ -186,6 +336,115 @@ Core.Skins.balls = {
   metal:   { name: 'Металл',   price: 200, style: 'metal'  }
 };
 
+Core.Skins.tubes.obsidian = {
+  name: 'ОБСИДИАН', price: 0, exclusive: true,
+  stroke: 0xd4af37, fill: 0x0a0a10, strokeAlpha: 1, fillAlpha: 0.6, lineWidth: 4,
+  activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.3
+};
+
+Core.ensureTestObsidian = function () {
+  if (!Core.TEST_OBSIDIAN) return;
+  if (!Core.SDK || !Core.SDK.saveData) return;
+  const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
+  const patch = {};
+  if (owned.indexOf('obsidian') < 0) { owned.push('obsidian'); patch.ownedSkins = owned; }
+  if (!Core.SDK.get('_obsidianTestSeen', false)) { patch.currentSkin = 'obsidian'; patch._obsidianTestSeen = true; }
+  if (Object.keys(patch).length) Core.SDK.save(patch);
+};
+
+Core.syncObsidianAccess = function () {
+  if (!Core.SDK || !Core.SDK.saveData) return;
+  const rewards = Core.SDK.get('monthlyRewards', {});
+  let earned = false;
+  Object.keys(rewards).forEach(function (k) {
+    const r = rewards[k];
+    const cl = r.claimed || (r.tier ? [String(r.tier).toLowerCase()] : []);
+    if (cl.indexOf('gold') >= 0) earned = true;
+  });
+  const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
+  const patch = {};
+  if (Core.TEST_OBSIDIAN) {
+    if (owned.indexOf('obsidian') < 0) { owned.push('obsidian'); patch.ownedSkins = owned; }
+    if (!Core.SDK.get('_obsidianTestSeen', false)) { patch.currentSkin = 'obsidian'; patch._obsidianTestSeen = true; }
+  } else if (!earned) {
+    const i = owned.indexOf('obsidian');
+    if (i >= 0) { owned.splice(i, 1); patch.ownedSkins = owned; }
+    if (Core.SDK.get('currentSkin', 'classic') === 'obsidian') patch.currentSkin = 'classic';
+    if (Core.SDK.get('_obsidianTestSeen', false)) patch._obsidianTestSeen = false;
+  }
+  if (Object.keys(patch).length) Core.SDK.save(patch);
+};
+
+Core.SkinPerks = {
+  tubes: {
+    classic: { perk: {}, desc: 'Базовый стиль' },
+    glass: { perk: { hintFree: true }, desc: 'Подсказки не снижают звёзды' },
+    metal: { perk: { undoFree: true }, desc: 'Отмены не снижают звёзды' },
+    wood: { perk: { coinMult: 1.2 }, desc: '+20% монет за уровень' },
+    obsidian: { perk: { shuffleFree: true, coinMult: 1.1 }, desc: 'Шаффл без штрафа · +10% монет' }
+  }
+};
+Object.keys(Core.Skins.tubes).forEach(function (k) {
+  const def = Core.SkinPerks.tubes[k] || { perk: {}, desc: 'Базовый стиль' };
+  Core.Skins.tubes[k].perk = def.perk;
+  Core.Skins.tubes[k].perkDesc = def.desc;
+});
+(function () {
+  const keys = Object.keys(Core.Skins.balls);
+  const presets = [
+    { perk: {}, desc: 'Базовый стиль' },
+    { perk: { scoreMult: 1.1 }, desc: '+10% очков за уровень' },
+    { perk: { scoreMult: 1.15 }, desc: '+15% очков за уровень' },
+    { perk: { coinMult: 1.15 }, desc: '+15% монет за уровень' },
+    { perk: { hintFree: true }, desc: 'Подсказки не снижают звёзды' }
+  ];
+  keys.forEach(function (k, i) {
+    const p = presets[i % presets.length];
+    Core.Skins.balls[k].perk = p.perk;
+    Core.Skins.balls[k].perkDesc = p.desc;
+  });
+})();
+Core.activePerks = function () {
+  const t = Core.Skins.tubes[Core.SDK.get('currentSkin', 'classic')] || {};
+  const b = Core.Skins.balls[Core.SDK.get('currentBallSkin', 'classic')] || {};
+  const tp = t.perk || {}, bp = b.perk || {};
+  return {
+    hintFree: !!tp.hintFree || !!bp.hintFree,
+    undoFree: !!tp.undoFree || !!bp.undoFree,
+    shuffleFree: !!tp.shuffleFree || !!bp.shuffleFree,
+    coinMult: (tp.coinMult || 1) * (bp.coinMult || 1),
+    scoreMult: (tp.scoreMult || 1) * (bp.scoreMult || 1)
+  };
+};
+
+Core.autoClaimMonthly = function (monthKey) {
+  if (!Core.SDK || !Core.SDK.saveData) return [];
+  const stars = pfMonthStars(monthKey);
+  const rewards = Core.SDK.get('monthlyRewards', {});
+  const rec = rewards[monthKey] || { claimed: [] };
+  if (!rec.claimed) rec.claimed = rec.tier ? [String(rec.tier).toLowerCase()] : [];
+  const tiers = [
+    { key: 'bronze', need: 30, coins: 150, hints: 2, skin: null, label: 'БРОНЗА · 30★' },
+    { key: 'silver', need: 60, coins: 300, hints: 3, skin: null, label: 'СЕРЕБРО · 60★' },
+    { key: 'gold', need: 90, coins: 600, hints: 5, skin: 'obsidian', label: 'ЗОЛОТО · 90★' }
+  ];
+  const newly = [];
+  tiers.forEach(function (t) { if (stars >= t.need && rec.claimed.indexOf(t.key) < 0) { rec.claimed.push(t.key); newly.push(t); } });
+  if (!newly.length) return [];
+  const patch = { coins: Core.SDK.get('coins', 0), hintsOwned: Core.SDK.get('hintsOwned', 0) };
+  const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
+  let gotSkin = false;
+  newly.forEach(function (t) {
+    patch.coins += t.coins;
+    patch.hintsOwned += t.hints;
+    if (t.skin && owned.indexOf(t.skin) < 0) { owned.push(t.skin); gotSkin = true; }
+  });
+  if (gotSkin) patch.ownedSkins = owned;
+  rec.stars = stars; rec.updatedAt = Date.now();
+  rewards[monthKey] = rec; patch.monthlyRewards = rewards;
+  Core.SDK.save(patch);
+  return newly;
+};
 Core.Audio = (function () {
   let ctx = null;
   function ensure() {
@@ -248,8 +507,8 @@ Core.Utils = {
 };
 
 Core.PALETTE = [
-  0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6,
-  0xe67e22, 0x1abc9c, 0xec407a, 0x795548, 0x607d8b
+  0xe04a55, 0x4a90e2, 0x2ecc8f, 0xf0c040, 0xa66de0,
+  0xe67e3c, 0x2bc4c9, 0xe055c0, 0x8d6e63, 0x90a4ae
 ];
 
 Core.Juice = {
@@ -307,10 +566,10 @@ Core.makeCoinTexture = function (scene) {
   if (scene.textures.exists('coin_icon')) return;
   const size = 64, cx = size / 2, cy = size / 2, r = size / 2 - 2;
   const g = scene.add.graphics();
-  g.fillStyle(0x8b6914, 1); g.fillCircle(cx, cy, r);
-  g.fillStyle(0xffd93d, 1); g.fillCircle(cx, cy, r - 2);
-  g.lineStyle(2, 0xd4a017, 0.9); g.strokeCircle(cx, cy, r - 8);
-  g.fillStyle(0xfff0a0, 0.85); g.fillCircle(cx - r * 0.35, cy - r * 0.35, r * 0.3);
+  g.fillStyle(0x6f5a1f, 1); g.fillCircle(cx, cy, r);
+  g.fillStyle(0xe8c874, 1); g.fillCircle(cx, cy, r - 2);
+  g.lineStyle(2, 0xa8842a, 0.9); g.strokeCircle(cx, cy, r - 8);
+  g.fillStyle(0xf5e6b8, 0.85); g.fillCircle(cx - r * 0.35, cy - r * 0.35, r * 0.3);
   g.fillStyle(0xffffff, 0.9);  g.fillCircle(cx - r * 0.45, cy - r * 0.45, r * 0.1);
   g.generateTexture('coin_icon', size, size); g.destroy();
 };
@@ -351,16 +610,16 @@ Core.renderBall = function (scene, radius, color, skinKey) {
 Core.coinLabel = function (scene, x, y, amount, opts) {
   opts = opts || {};
   const fs = opts.fontSize || 22;
-  const iconSize = opts.iconSize || Math.round(fs * 1.05);
+  const iconSize = (opts.iconSize || Math.round(fs * 1.05)) * 1.3;
   const gap = opts.gap || 6;
-  const color = opts.color || '#ffd93d';
+  const color = opts.color || '#e8c874';
   const stroke = opts.stroke || '#000000';
   const st = opts.strokeThickness != null ? opts.strokeThickness : 3;
   const anchor = opts.anchor || 'center';
   const fmt = function (v) { return typeof v === 'number' ? v.toLocaleString('ru-RU') : String(v); };
 
   const txt = scene.add.text(0, 0, fmt(amount), {
-    fontFamily: Core.FONT, fontSize: fs + 'px', fontStyle: '900', color: color, stroke: stroke, strokeThickness: st
+    fontFamily: Core.FONT, fontSize: (fs) * 1.3 + 'px', fontStyle: '900', color: color, stroke: stroke, strokeThickness: st
   }).setOrigin(0, 0.5);
   const layout = function () {
     const totalW = iconSize + gap + txt.width;
@@ -392,32 +651,30 @@ Core.makeGradients = function (scene) {
     g.fillRoundedRect(0, 0, w, h, rad);
     g.generateTexture(key, w, h); g.destroy();
   }
-  grad('btn_big',   320, 120, 0x66e0bb, 0x2eae86, 22);
-  grad('btn_small', 170, 70,  0x4ecca3, 0x2a9070, 16);
-  grad('btn_menu',  240, 70,  0x4ecca3, 0x2a9070, 16);
-  grad('btn_daily', 340, 100, 0xffd93d, 0xd4a017, 20);
-  grad('btn_daily_done', 340, 100, 0x3a3a4a, 0x2a2a3a, 20);
+  grad('btn_big',   320, 120, 0xe8c874, 0x9a7b1f, 22);
+  grad('btn_small', 170, 70,  0xd4af37, 0x9a7b1f, 16);
+  grad('btn_menu',  240, 70,  0xd4af37, 0x9a7b1f, 16);
+  grad('btn_daily', 340, 100, 0xe8c874, 0xa8842a, 20);
+  grad('btn_daily_done', 340, 100, 0x2a2138, 0x1c1628, 20);
+  grad('btn_shuffle', 120, 70, 0xf0b060, 0xd35400, 16); // НОВАЯ КНОПКА
   Core.makeCoinTexture(scene);
 };
 
 Core.TextStyles = {
   title: function (size) {
-    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffffff',
-      stroke: '#0f3460', strokeThickness: Math.max(4, size * 0.12),
-      shadow: { offsetX: 0, offsetY: 4, color: '#000000', blur: 0, fill: true } };
+    return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '900', color: '#f5f0e6',
+      letterSpacing: 3, stroke: '#000000', strokeThickness: 6 };
   },
   heading: function (size) {
-    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffffff',
-      stroke: '#0f3460', strokeThickness: 3,
-      shadow: { offsetX: 0, offsetY: 3, color: '#00000055', blur: 4, fill: true } };
+    return { fontFamily: Core.FONT, fontSize: ((size * 1.05)) * 1.3 + 'px', fontStyle: '800', color: '#f5f0e6',
+      letterSpacing: 1, stroke: '#000000', strokeThickness: 5 };
   },
   soft: function (size, color) {
-    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '700', color: color || '#aaaaaa' };
+    return { fontFamily: Core.FONT, fontSize: ((size * 1.0)) * 1.3 + 'px', fontStyle: '600', color: color || '#9ca3af' };
   },
   gold: function (size) {
-    return { fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: '#ffd93d',
-      stroke: '#000000', strokeThickness: 3,
-      shadow: { offsetX: 0, offsetY: 2, color: '#00000088', blur: 3, fill: true } };
+    return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '800', color: '#fcd34d',
+      letterSpacing: 1, stroke: '#000000', strokeThickness: 5 };
   }
 };
 
@@ -428,20 +685,20 @@ Core.showAchievement = function (scene, achId) {
   Core.Juice.vibrate([20, 15, 30]);
   const W = scene.scale.width;
   const c = scene.add.container(W / 2, -100).setDepth(2000);
-  c.add(scene.add.rectangle(0, 0, 420, 90, 0x1a1a2e).setStrokeStyle(3, 0xffd93d));
-  c.add(scene.add.text(-170, 0, ach.icon, { fontSize: '44px' }).setOrigin(0.5));
+  c.add(scene.add.rectangle(0, 0, 420, 90, 0x1c1628).setStrokeStyle(3, 0xe8c874));
+  c.add(scene.add.text(-170, 0, ach.icon, { fontSize: '57.2px' }).setOrigin(0.5));
   c.add(scene.add.text(-130, -18, 'ДОСТИЖЕНИЕ!', {
-    fontFamily: Core.FONT, fontSize: '13px', fontStyle: '900', color: '#ffd93d'
+    fontFamily: Core.FONT, fontSize: '16.9px', fontStyle: '900', color: '#e8c874'
   }).setOrigin(0, 0.5));
   c.add(scene.add.text(-130, 8, ach.name, {
-    fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#ffffff'
+    fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#f5f0e6'
   }).setOrigin(0, 0.5));
   c.add(scene.add.text(-130, 30, ach.desc, {
-    fontFamily: Core.FONT, fontSize: '12px', fontStyle: '700', color: '#888888'
+    fontFamily: Core.FONT, fontSize: '15.6px', fontStyle: '600', color: '#9a8fb8'
   }).setOrigin(0, 0.5));
   scene.tweens.add({ targets: c, y: 130, duration: 500, ease: 'Back.Out' });
   scene.tweens.add({ targets: c, y: -120, duration: 500, delay: 2400, ease: 'Back.In', onComplete: function () { c.destroy(); } });
-};
+}
 
 class BaseGameScene extends Phaser.Scene {
   init(data) {
@@ -449,18 +706,21 @@ class BaseGameScene extends Phaser.Scene {
     this.level = (data && data.level) || Core.SDK.get('level', 1);
     this.seed = (data && data.seed) || null;
     this.isDaily = this.mode === 'daily';
+    this.dailyDate = (data && data.dailyDate) || todayStr();
   }
   create() {
+    Core.syncObsidianAccess();
     const W = this.scale.width, H = this.scale.height;
-    this.cameras.main.setBackgroundColor('#0f3460');
+    this.cameras.main.setBackgroundColor('#0a0a10');
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 22, -5);
 
     this.moves = 0; this.score = 0; this.animating = false;
     this.levelJustFinished = false;
     this.hintsLeft = Core.SDK.get('hintsOwned', 3);
+    this.shufflesLeft = Core.SDK.get('shufflesOwned', 2); // ДОБАВИЛИ ПЕРЕМЕШКИ
     this.undoCount = 0; this.combo = 0; this.maxCombo = 0;
     this.savedHints = this.hintsLeft;
     this.bestScore = this.isDaily ? 0 : (Core.SDK.get('bestScores', {})[this.level] || 0);
@@ -479,24 +739,33 @@ class BaseGameScene extends Phaser.Scene {
     const bar = this.add.graphics();
     bar.fillStyle(0x000000, 0.3); bar.fillRect(0, 0, W, 90);
     const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+      fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6'
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => { Core.SDK.gameplayStop(); this.scene.start('Menu'); });
     let title = 'Уровень ' + this.level;
     if (this.isDaily) title = '🎁 Ежедневный';
     this.add.text(W / 2, 30, title, Core.TextStyles.heading(26)).setOrigin(0.5);
     const subtitle = this.bestScore > 0 ? 'Рекорд: ★ ' + this.bestScore : (this.isDaily ? 'Только раз в день' : '');
-    this.add.text(W / 2, 62, subtitle, Core.TextStyles.soft(13, '#888888')).setOrigin(0.5);
+    this.add.text(W / 2, 62, subtitle, Core.TextStyles.soft(13, '#9a8fb8')).setOrigin(0.5);
     this.coinLabel = Core.coinLabel(this, 20, 110, Core.SDK.get('coins', 0), { fontSize: 18, iconSize: 20, anchor: 'left' });
     this.scoreText = this.add.text(W - 20, 28, '★ 0', {
-      fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#ffd93d', stroke: '#000000', strokeThickness: 3
+      fontFamily: Core.FONT, fontSize: '33.8px', fontStyle: '900', color: '#e8c874', stroke: '#000000', strokeThickness: 3
     }).setOrigin(1, 0.5);
-    this.movesText = this.add.text(W - 20, 66, 'Ходы: 0', Core.TextStyles.soft(14, '#aaaaaa')).setOrigin(1, 0.5);
+    this.movesText = this.add.text(W - 20, 66, 'Ходы: 0', Core.TextStyles.soft(14, '#9a8fb8')).setOrigin(1, 0.5);
     this.comboText = this.add.text(W - 20, 108, '', {
-      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ff9f43', stroke: '#000000', strokeThickness: 3
+      fontFamily: Core.FONT, fontSize: '28.6px', fontStyle: '900', color: '#f0b060', stroke: '#000000', strokeThickness: 3
     }).setOrigin(1, 0.5).setVisible(false);
   }
-  updateMoves() { if (this.movesText) this.movesText.setText('Ходы: ' + this.moves); }
+  updateMoves() {
+    if (!this.movesText) return;
+    const par = this.parMoves || 0;
+    this.movesText.setText(par ? ('Ходы: ' + this.moves + ' / ' + par) : ('Ходы: ' + this.moves));
+    if (par) {
+      const good = this.moves <= par;
+      const ok = this.moves <= Math.ceil(par * 1.35);
+      this.movesText.setColor(good ? '#e8c874' : (ok ? '#c9c2d8' : '#e0556a'));
+    }
+  }
   updateScore(smooth) {
     if (!this.scoreText) return;
     const self = this;
@@ -523,9 +792,9 @@ class BaseGameScene extends Phaser.Scene {
     const g = (this.tubeGeom || [])[tubeIndex];
     if (g) {
       const size = opts.size || 26;
-      const color = opts.color || '#ffd93d';
+      const color = opts.color || '#e8c874';
       const t = this.add.text(g.x, g.y - g.h / 2 - 16, '+' + pts, {
-        fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '900', color: color,
+        fontFamily: Core.FONT, fontSize: (size) * 1.3 + 'px', fontStyle: '900', color: color,
         stroke: '#000000', strokeThickness: 4
       }).setOrigin(0.5).setDepth(1000).setScale(0);
       this.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.Out' });
@@ -536,25 +805,51 @@ class BaseGameScene extends Phaser.Scene {
   }
   createBottomBar() {
     const W = this.scale.width, H = this.scale.height;
-    const y = H - 90;
-    this.undoBtn = this.makeBtn(W / 2 - 100, y, '↶', 'Отмена', () => this.doUndo());
-    this.hintBtn = this.makeBtn(W / 2 + 100, y, '💡', 'Подсказка (' + this.hintsLeft + ')', () => this.doHint());
+    const y = H - 104;
+    this.undoBtn = this.makeBtn(W/2 - 150, y, '↶', 'Отмена хода', () => this.doUndo());
+    this.shuffleBtn = this.makeBtn(W/2, y, '🔀', 'Перемешать', () => this.doShuffle());
+    this.hintBtn = this.makeBtn(W/2 + 150, y, '💡', 'Подсказка', () => this.doHint());
+    const badge = this.add.circle(38, 30, 15, 0xd4af37, 1);
+    const badgeText = this.add.text(38, 30, String(this.hintsLeft), {
+      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#0a0a10'
+    }).setOrigin(0.5).setResolution(2);
+    this.hintBtn.container.add([badge, badgeText]);
+    this.hintBtn.badgeText = badgeText;
     this.refreshUndoButton();
+    this.updateHintLabel();
   }
   makeBtn(x, y, icon, label, onClick) {
     const c = this.add.container(x, y);
-    const img = this.add.image(0, 0, 'btn_small').setOrigin(0.5);
-    c.add(img);
-    c.add(this.add.text(0, -12, icon, {
-      fontFamily: Core.FONT, fontSize: '28px', fontStyle: '900', color: '#ffffff', stroke: '#0f3460', strokeThickness: 2
-    }).setOrigin(0.5));
-    const labelT = this.add.text(0, 18, label, Core.TextStyles.soft(13, '#0f3460')).setOrigin(0.5);
-    c.add(labelT);
-    img.setInteractive({ useHandCursor: true });
-    img.on('pointerover', () => img.setTint(0xc9ffe8));
-    img.on('pointerout',  () => img.clearTint());
-    img.on('pointerdown', onClick);
-    return { container: c, labelT: labelT, bg: img };
+    const w = 108, h = 88;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1c1628, 0.96); bg.fillRoundedRect(-w/2, -h/2, w, h, 20);
+    bg.lineStyle(2, 0xd4af37, 0.75); bg.strokeRoundedRect(-w/2, -h/2, w, h, 20);
+    c.add(bg);
+    const iconT = this.add.text(0, -4, icon, {
+      fontFamily: Core.FONT, fontSize: '38px', fontStyle: '400', color: '#f5f0e6'
+    }).setOrigin(0.5).setResolution(2);
+    c.add(iconT);
+
+    const tip = this.add.container(0, -h/2 - 34);
+    const tipText = this.add.text(0, 0, label, {
+      fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#f5f0e6'
+    }).setOrigin(0.5).setResolution(2);
+    const tw = Math.max(120, tipText.width + 28), th = 36;
+    const tipBg = this.add.graphics();
+    tipBg.fillStyle(0x0a0a10, 0.96); tipBg.fillRoundedRect(-tw/2, -th/2, tw, th, 12);
+    tipBg.lineStyle(1.5, 0xd4af37, 0.8); tipBg.strokeRoundedRect(-tw/2, -th/2, tw, th, 12);
+    tipBg.fillTriangle(-7, th/2 - 1, 7, th/2 - 1, 0, th/2 + 9);
+    tip.add([tipBg, tipText]);
+    tip.setVisible(false);
+    c.add(tip);
+
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => { tip.setVisible(true); bg.setAlpha(0.85); });
+    hit.on('pointerout', () => { tip.setVisible(false); bg.setAlpha(1); c.setScale(1); });
+    hit.on('pointerdown', () => c.setScale(0.94));
+    hit.on('pointerup', () => { c.setScale(1); onClick(); });
+    return { container: c, bg, labelT: tipText, iconT, tip };
   }
   refreshUndoButton() {
     if (!this.undoBtn) return;
@@ -564,11 +859,79 @@ class BaseGameScene extends Phaser.Scene {
   showToast(msg) {
     const W = this.scale.width, H = this.scale.height;
     const t = this.add.text(W / 2, H * 0.85, msg, {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+      fontFamily: Core.FONT, fontSize: '23.4px', fontStyle: '800', color: '#f5f0e6',
       backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
     }).setOrigin(0.5).setDepth(1000);
     this.tweens.add({ targets: t, alpha: 0, y: H * 0.8, duration: 1400, delay: 900, onComplete: () => t.destroy() });
   }
+
+  // ЛОГИКА ПЕРЕМЕШКИ
+  async doShuffle() {
+    if (this.animating || this.levelJustFinished) return;
+    if (this.shufflesLeft > 0) {
+      this.shufflesLeft--;
+      Core.SDK.save({ shufflesOwned: this.shufflesLeft });
+      this.updateShuffleLabel();
+      this.performShuffle();
+      return;
+    }
+    const coins = Core.SDK.get('coins', 0);
+    if (coins >= 50) {
+      Core.SDK.save({ coins: coins - 50, shufflesOwned: this.shufflesLeft + 1 });
+      this.shufflesLeft++; this.updateShuffleLabel(); this.updateCoins();
+      Core.Audio.buy(); this.showToast('Куплено!');
+      this.doShuffle();
+    } else {
+      this.showToast('Не хватает монет (нужно 50)');
+    }
+  }
+  updateShuffleLabel() { if (this.shuffleBtn) this.shuffleBtn.labelT.setText('Микс (' + this.shufflesLeft + ')'); }
+  
+  performShuffle() {
+    this.animating = true;
+    const activeTubes = [];
+    const allBalls = [];
+    
+    // Собираем все шары из нерешенных колб
+    this.tubes.forEach((t, i) => {
+      if (!Logic.isUniform(t)) {
+        activeTubes.push(i);
+        allBalls.push(...t);
+      }
+    });
+    
+    // Перемешиваем
+    Core.Utils.shuffleWith(allBalls);
+    
+    // Распределяем обратно
+    let ballIdx = 0;
+    activeTubes.forEach(i => {
+      const count = this.tubes[i].length;
+      this.tubes[i] = allBalls.slice(ballIdx, ballIdx + count);
+      ballIdx += count;
+    });
+
+    // Визуально обновляем
+    activeTubes.forEach(i => {
+      this.ballGfx[i].forEach(b => b.destroy());
+      this.ballGfx[i] = [];
+      for (let j = 0; j < this.tubes[i].length; j++) {
+        const b = this.makeBall(i, j);
+        b.setAlpha(0);
+        this.tweens.add({ targets: b, alpha: 1, duration: 300 });
+        this.ballGfx[i].push(b);
+      }
+    });
+
+    Core.Juice.screenFlash(this, 0xf0b060, 0.2, 300);
+    Core.Audio.select();
+    
+    this.time.delayedCall(350, () => {
+      this.animating = false;
+      this.checkDoneTubes();
+    });
+  }
+
   async doHint() {
     if (this.animating) return;
     if (this.hintsLeft > 0) {
@@ -582,17 +945,17 @@ class BaseGameScene extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
     const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0).setInteractive().setDepth(1001);
     const panel = this.add.container(W / 2, H / 2).setDepth(1002);
-    panel.add(this.add.rectangle(0, 0, 440, 340, 0x1a1a2e).setStrokeStyle(4, 0x4ecca3));
+    panel.add(this.add.rectangle(0, 0, 440, 340, 0x1c1628).setStrokeStyle(4, 0xd4af37));
     panel.add(this.add.text(0, -130, 'Нет подсказок', Core.TextStyles.title(32)).setOrigin(0.5));
-    panel.add(this.add.text(0, -80, 'Как получить ещё?', Core.TextStyles.soft(16, '#cccccc')).setOrigin(0.5));
+    panel.add(this.add.text(0, -80, 'Как получить ещё?', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5));
     const coins = Core.SDK.get('coins', 0), canBuy = coins >= 30;
-    const adBtn = this.add.rectangle(0, -25, 380, 60, 0x4ecca3).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    const adBtn = this.add.rectangle(0, -25, 380, 60, 0xd4af37).setOrigin(0.5).setInteractive({ useHandCursor: true });
     panel.add(adBtn);
     panel.add(this.add.text(0, -25, '🎬  +1 за рекламу', {
-      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#0f3460'
+      fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#0a0a10'
     }).setOrigin(0.5));
-    adBtn.on('pointerover', () => adBtn.setFillStyle(0x5ddcb3));
-    adBtn.on('pointerout',  () => adBtn.setFillStyle(0x4ecca3));
+    adBtn.on('pointerover', () => adBtn.setFillStyle(0xf0d68a));
+    adBtn.on('pointerout',  () => adBtn.setFillStyle(0xd4af37));
     adBtn.on('pointerdown', async () => {
       overlay.destroy(); panel.destroy();
       this.showToast('Смотрим рекламу...');
@@ -600,15 +963,15 @@ class BaseGameScene extends Phaser.Scene {
       if (ok) { this.hintsLeft++; Core.SDK.save({ hintsOwned: this.hintsLeft }); this.updateHintLabel(); this.showHint(); }
       else this.showToast('Реклама недоступна');
     });
-    const buyBtn = this.add.rectangle(0, 50, 380, 60, canBuy ? 0xffd93d : 0x3a3a4a).setOrigin(0.5);
+    const buyBtn = this.add.rectangle(0, 50, 380, 60, canBuy ? 0xe8c874 : 0x2a2138).setOrigin(0.5);
     if (canBuy) buyBtn.setInteractive({ useHandCursor: true });
     panel.add(buyBtn);
     panel.add(this.add.text(0, 50, canBuy ? 'Купить за 30' : 'Не хватает монет', {
-      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: canBuy ? '#0f3460' : '#888888'
+      fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: canBuy ? '#0a0a10' : '#9a8fb8'
     }).setOrigin(0.5));
     if (canBuy) {
       buyBtn.on('pointerover', () => buyBtn.setFillStyle(0xffe566));
-      buyBtn.on('pointerout',  () => buyBtn.setFillStyle(0xffd93d));
+      buyBtn.on('pointerout',  () => buyBtn.setFillStyle(0xe8c874));
       buyBtn.on('pointerdown', () => {
         overlay.destroy(); panel.destroy();
         Core.SDK.save({ coins: coins - 30, hintsOwned: this.hintsLeft + 1 });
@@ -616,20 +979,25 @@ class BaseGameScene extends Phaser.Scene {
         Core.Audio.buy(); this.showToast('Куплено!'); this.showHint();
       });
     }
-    const close = this.add.text(0, 130, 'Отмена', Core.TextStyles.soft(16, '#888888')).setOrigin(0.5).setInteractive();
+    const close = this.add.text(0, 130, 'Отмена', Core.TextStyles.soft(16, '#9a8fb8')).setOrigin(0.5).setInteractive();
     close.on('pointerdown', () => { overlay.destroy(); panel.destroy(); });
     panel.add(close);
     panel.setScale(0.7); panel.setAlpha(0);
     this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 300, ease: 'Back.Out' });
   }
-  updateHintLabel() { if (this.hintBtn) this.hintBtn.labelT.setText('Подсказка (' + this.hintsLeft + ')'); }
+  updateHintLabel() {
+    if (!this.hintBtn) return;
+    const n = this.hintsLeft;
+    if (this.hintBtn.labelT) this.hintBtn.labelT.setText('Подсказка (' + n + ')');
+    if (this.hintBtn.badgeText) this.hintBtn.badgeText.setText(String(n));
+  }
   showCombo(n) {
     const W = this.scale.width;
     const isBig = n >= 5, isHuge = n >= 10;
     if (isBig) {
       Core.Audio.bigCombo();
       this.cameras.main.shake(220, 0.005);
-      Core.Juice.screenFlash(this, 0xffd93d, 0.22, 240);
+      Core.Juice.screenFlash(this, 0xe8c874, 0.22, 240);
       this.tweens.add({ targets: this.cameras.main, zoom: 1.03, duration: 150, yoyo: true, ease: 'Sine.InOut' });
       Core.Juice.vibrate([30, 20, 40]);
     } else { Core.Audio.combo(n); Core.Juice.vibrate(15); }
@@ -638,49 +1006,82 @@ class BaseGameScene extends Phaser.Scene {
     t.setScale(0.2);
     this.tweens.add({ targets: t, scale: 1, duration: 300, ease: 'Back.Out' });
     this.tweens.add({ targets: t, alpha: 0, y: 140, duration: 800, delay: 600, onComplete: function () { t.destroy(); } });
-    if (isBig) Core.Juice.burst(this, W / 2, 190, 0xffd93d, 24, 160);
+    if (isBig) Core.Juice.burst(this, W / 2, 190, 0xe8c874, 24, 160);
   }
   getStars() {
-    const usedHints = (this.savedHints - this.hintsLeft);
-    const used = usedHints + this.undoCount;
-    if (used === 0) return 3;
-    if (used <= 2) return 2;
-    return 1;
+    const assists = this.getAssists();
+    const par = this.parMoves || Core.Solver.estimate(this.tubes || [], this.colors || 3);
+    let stars;
+    if (this.moves <= par) stars = 3;
+    else if (this.moves <= Math.ceil(par * 1.35)) stars = 2;
+    else stars = 1;
+    if (assists >= 1) stars = Math.min(stars, 2);
+    if (assists >= 3) stars = 1;
+    return stars;
   }
-  checkAchievementsAfterWin(stars, totalLevelsAfter) {
-    const unlocked = [];
-    const totalLevels = totalLevelsAfter || Core.SDK.get('totalLevelsCompleted', 0);
-    const coins = Core.SDK.get('coins', 0);
-    const ownedSkins = Core.SDK.get('ownedSkins', []);
-    if (totalLevels >= 1 && Core.Achievements.unlock('first_win')) unlocked.push('first_win');
-    if (stars === 3 && totalLevels >= 2 && Core.Achievements.unlock('three_stars')) unlocked.push('three_stars');
-    if (this.maxCombo >= 10 && this.colors >= 5 && Core.Achievements.unlock('combo_10')) unlocked.push('combo_10');
-    if (totalLevels >= 10 && Core.Achievements.unlock('ten_levels')) unlocked.push('ten_levels');
-    if (totalLevels >= 50 && Core.Achievements.unlock('fifty_levels')) unlocked.push('fifty_levels');
-    if (this.isDaily && Core.Achievements.unlock('daily_done')) unlocked.push('daily_done');
-    if (coins >= 1000 && Core.Achievements.unlock('rich')) unlocked.push('rich');
-    if (ownedSkins.length >= 4 && Core.Achievements.unlock('all_skins')) unlocked.push('all_skins');
-    unlocked.forEach((id, i) => {
-      this.time.delayedCall(1400 + i * 900, () => Core.showAchievement(this, id));
+  checkAchievementsAfterWin(stars, totalCompleted) {
+    const newly = Core.Achievements.sync();
+    newly.forEach((a, i) => {
+      this.time.delayedCall(700 + i * 1100, () => {
+        const r = Core.Achievements.rewardFor(a.id);
+        const rewardText = Core.Achievements.rewardLabel(r);
+        if (typeof Core.showAchievement === 'function') { try { Core.showAchievement(this, a); return; } catch (e) {} }
+        const W = this.scale.width;
+        const b = this.add.container(W / 2, 80).setDepth(2000);
+        b.add(this.add.rectangle(0, 0, 420, 80, 0x1c1628).setStrokeStyle(2, 0xe8c874, 1));
+        b.add(this.add.text(-190, -22, 'ДОСТИЖЕНИЕ', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
+        b.add(this.add.text(-190, 2, a.title, { fontFamily: Core.FONT, fontSize: '17px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+        b.add(this.add.text(-190, 24, rewardText, { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
+        b.setAlpha(0);
+        this.tweens.add({ targets: b, alpha: 1, y: 115, duration: 300, ease: 'Back.Out' });
+        this.time.delayedCall(2600, () => { this.tweens.add({ targets: b, alpha: 0, y: 85, duration: 300, onComplete: () => b.destroy() }); });
+      });
     });
   }
   onLevelComplete() {
     if (this.levelJustFinished) return;
     this.levelJustFinished = true;
     const stars = this.getStars();
-    const starBonus = stars * 100;
-    this.starBonus = starBonus;
-    this.score += starBonus; this.updateScore(true);
-    const baseCoins = 20 + stars * 10;
+    const perf = this.computeLevelScore(stars);
+    this.scoreBreakdown = perf;
+    this.starBonus = perf.starBonus;
+    this.score = perf.total;
+    this.updateScore(true);
+    const up = Core.SDK.get('upgrades', {});
+    const perks = Core.activePerks();
+    const coinBonus = up.coinBonus ? 10 : 0;
+    const baseCoins = 20 + stars * 10 + coinBonus;
     const isNewRecord = this.isDaily ? false : (this.score > this.bestScore);
     const recordBonus = isNewRecord ? 20 : 0;
-    let coinsEarned = baseCoins + recordBonus;
-    if (this.isDaily) coinsEarned += 100;
-    this.coinsEarned = coinsEarned;
     const patch = {};
+    let coinsEarned = 0;
+    let firstDaily = false;
+
     if (this.isDaily) {
-      patch.dailyDate = todayStr();
-      patch.dailyStars = Math.max(Core.SDK.get('dailyStars', 0), stars);
+      const dateKey = this.dailyDate || todayStr();
+      const history = Core.SDK.get('dailyHistory', {});
+      const prev = history[dateKey];
+      firstDaily = !prev;
+      const bestScore = Math.max(prev && prev.bestScore ? prev.bestScore : 0, this.score);
+      const bestStars = Math.max(prev && prev.bestStars ? prev.bestStars : 0, stars);
+      history[dateKey] = {
+        bestScore: bestScore, bestStars: bestStars,
+        lastScore: this.score, lastStars: stars,
+        moves: this.moves, par: this.parMoves || 0,
+        plays: (prev && prev.plays ? prev.plays : 0) + 1,
+        completedAt: prev && prev.completedAt ? prev.completedAt : Date.now(),
+        updatedAt: Date.now()
+      };
+      patch.dailyHistory = history;
+      if (dateKey === todayStr()) {
+        patch.dailyDate = dateKey;
+        patch.dailyStars = Math.max(Core.SDK.get('dailyStars', 0), stars);
+      }
+      coinsEarned = firstDaily ? (baseCoins + 100 + (up.dailyBonus ? 50 : 0)) : 0;
+      if (firstDaily) {
+        patch.totalScore = Core.SDK.get('totalScore', 0) + this.score;
+        patch.totalLevelsCompleted = Core.SDK.get('totalLevelsCompleted', 0) + 1;
+      }
     } else {
       const bestScores = Core.SDK.get('bestScores', {});
       if (isNewRecord) bestScores[this.level] = this.score;
@@ -688,26 +1089,35 @@ class BaseGameScene extends Phaser.Scene {
       const bestStars = Core.SDK.get('bestStars', {});
       if (stars > (bestStars[this.level] || 0)) bestStars[this.level] = stars;
       patch.bestStars = bestStars;
+      coinsEarned = baseCoins + recordBonus;
       this.level++;
       patch.level = this.level;
+      patch.totalScore = Core.SDK.get('totalScore', 0) + this.score;
+      patch.totalLevelsCompleted = Core.SDK.get('totalLevelsCompleted', 0) + 1;
     }
-    patch.totalScore = Core.SDK.get('totalScore', 0) + this.score;
+
+    coinsEarned = Math.round(coinsEarned * (perks.coinMult || 1));
     patch.coins = Core.SDK.get('coins', 0) + coinsEarned;
-    patch.totalLevelsCompleted = Core.SDK.get('totalLevelsCompleted', 0) + 1;
     patch.hintsOwned = this.hintsLeft;
     Core.SDK.save(patch);
-    this.levelScore = this.score;
-    this.totalScore = patch.totalScore;
+    this.coinsEarned = coinsEarned;
+    this.coinMult = perks.coinMult || 1;
+    this.dailyFirstCompletion = firstDaily;
+    this.levelScore = perf.total;
+    this.totalScore = Core.SDK.get('totalScore', 0);
     this.totalCoins = patch.coins;
     this.isNewRecord = isNewRecord;
     this.starsGot = stars;
+    this.recordAfter = this.isDaily
+      ? (Core.SDK.get('dailyHistory', {})[this.dailyDate] || {}).bestScore || this.score
+      : Core.SDK.get('bestScores', {})[this.level - 1] || this.score;
     Core.Audio.win();
     if (isNewRecord) this.time.delayedCall(500, () => Core.Audio.record());
     Core.Juice.vibrate([40, 40, 40, 40, 80]);
     this.cameras.main.shake(280, 0.004);
-    Core.Juice.screenFlash(this, 0xffffff, 0.35, 400);
+    Core.Juice.screenFlash(this, 0xf5f0e6, 0.3, 400);
     this.spawnConfetti();
-    this.checkAchievementsAfterWin(stars, patch.totalLevelsCompleted);
+    this.checkAchievementsAfterWin(stars, Core.SDK.get('totalLevelsCompleted', 0));
     this.time.delayedCall(1100, () => this.showWinPanel());
   }
   spawnConfetti() {
@@ -725,65 +1135,100 @@ class BaseGameScene extends Phaser.Scene {
   showWinPanel() {
     const W = this.scale.width, H = this.scale.height;
     const stars = this.starsGot;
-    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive().setDepth(1001);
+    const b = this.scoreBreakdown || {};
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.78).setOrigin(0).setInteractive().setDepth(1001);
     const panel = this.add.container(W / 2, H / 2).setDepth(1002);
-    panel.add(this.add.rectangle(0, 0, 460, 580, 0x1a1a2e).setStrokeStyle(4, this.isDaily ? 0xffd93d : 0x4ecca3));
-    const title = this.isDaily ? '🎁 ЕЖЕДНЕВНЫЙ!' : 'ПОБЕДА!';
-    panel.add(this.add.text(0, -240, title, Core.TextStyles.title(44)).setOrigin(0.5));
+    panel.add(this.add.rectangle(0, 0, 500, 640, 0x1c1628).setStrokeStyle(3, this.isDaily ? 0x7c5cff : 0xd4af37));
+    const title = this.isDaily ? (this.dailyFirstCompletion ? 'ВЫЗОВ ДНЯ ПРОЙДЕН' : 'РЕЗУЛЬТАТ УЛУЧШЕН') : 'ПОБЕДА!';
+    panel.add(this.add.text(0, -272, title, { fontFamily: Core.FONT, fontSize: '34px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 5 }).setOrigin(0.5).setResolution(2));
+
     for (let i = 0; i < 3; i++) {
       const on = i < stars;
-      const star = this.add.text(-80 + i * 80, -160, '★', {
-        fontFamily: Core.FONT, fontSize: '64px', fontStyle: '900',
-        color: on ? '#ffd93d' : '#333a4a', stroke: on ? '#b8860b' : '#1a1a2e', strokeThickness: on ? 4 : 2
-      }).setOrigin(0.5).setAlpha(0).setScale(0.3);
+      const star = this.add.text(-84 + i * 84, -200, '★', {
+        fontFamily: Core.FONT, fontSize: '66px', fontStyle: '400',
+        color: on ? '#e8c874' : '#3a3450', stroke: on ? '#8a6d1f' : '#1c1628', strokeThickness: on ? 4 : 2
+      }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(2);
       panel.add(star);
       this.tweens.add({ targets: star, alpha: 1, scale: on ? 1 : 0.85, duration: 380, delay: 200 + i * 140, ease: 'Back.Out' });
     }
+
     if (this.isNewRecord) {
-      const rec = this.add.text(0, -100, '🏆 НОВЫЙ РЕКОРД!', {
-        fontFamily: Core.FONT, fontSize: '24px', fontStyle: '900', color: '#ffd93d',
-        stroke: '#000000', strokeThickness: 4
-      }).setOrigin(0.5).setAlpha(0).setScale(0.3);
+      const rec = this.add.text(0, -142, 'НОВЫЙ РЕКОРД ЗАФИКСИРОВАН', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(2);
       panel.add(rec);
       this.tweens.add({ targets: rec, alpha: 1, scale: 1, duration: 500, delay: 900, ease: 'Back.Out' });
-      this.tweens.add({ targets: rec, scale: 1.06, duration: 500, delay: 1500, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     }
-    panel.add(this.add.text(0, -60, '★ ' + this.levelScore, Core.TextStyles.gold(38)).setOrigin(0.5));
-    panel.add(this.add.text(0, -20,
-      '+' + this.starBonus + ' за звёзды' + (this.isDaily ? ' · +100 за дейлик' : (this.isNewRecord ? ' · +20 за рекорд' : '')),
-      Core.TextStyles.soft(14, '#4ecca3')).setOrigin(0.5));
-    const coinsLabel = Core.coinLabel(this, 0, 25, 0, { fontSize: 24, iconSize: 26, anchor: 'center' });
+
+    panel.add(this.add.text(0, -98, '★ ' + this.levelScore, { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2));
+
+    let breakdown = 'База ' + b.base + ' · Точность +' + b.eff + ' · Звёзды +' + b.starBonus;
+    if (b.penalty) breakdown += ' · Штраф −' + b.penalty;
+    if (b.scoreMult > 1) breakdown += ' · Скин ×' + b.scoreMult;
+    panel.add(this.add.text(0, -54, breakdown, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5).setResolution(2));
+
+    const coinsLabel = Core.coinLabel(this, 0, -10, 0, { fontSize: 26, iconSize: 28, anchor: 'center' });
     panel.add(coinsLabel);
     this.time.delayedCall(500, () => { coinsLabel.__tickTo(this.coinsEarned, 900); });
-    panel.add(this.add.text(0, 70, 'Ходов: ' + this.moves, Core.TextStyles.soft(14, '#888888')).setOrigin(0.5));
-    panel.add(this.add.text(0, 97, 'Всего очков: ' + this.totalScore, Core.TextStyles.soft(14, '#7fd4c1')).setOrigin(0.5));
-    panel.add(this.add.text(0, 120, 'Монет всего: ' + this.totalCoins, {
-      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#ffd93d'
-    }).setOrigin(0.5));
-    if (this.isDaily) {
-      const menuBtn = this.add.image(0, 190, 'btn_menu').setOrigin(0.5).setInteractive({ useHandCursor: true });
-      panel.add(menuBtn);
-      panel.add(this.add.text(0, 190, 'В меню', Core.TextStyles.heading(24)).setOrigin(0.5));
-      menuBtn.on('pointerover', () => menuBtn.setTint(0xc9ffe8));
-      menuBtn.on('pointerout',  () => menuBtn.clearTint());
-      menuBtn.on('pointerdown', () => { overlay.destroy(); panel.destroy(); Core.SDK.gameplayStop(); this.scene.start('Menu'); });
-    } else {
-      const nextBtn = this.add.image(0, 190, 'btn_menu').setOrigin(0.5).setInteractive({ useHandCursor: true });
-      panel.add(nextBtn);
-      panel.add(this.add.text(0, 190, 'Далее →', Core.TextStyles.heading(24)).setOrigin(0.5));
-      nextBtn.on('pointerover', () => nextBtn.setTint(0xc9ffe8));
-      nextBtn.on('pointerout',  () => nextBtn.clearTint());
-      nextBtn.on('pointerdown', () => {
-        overlay.destroy(); panel.destroy();
-        const nextLevel = this.level;
-        const needAd = ((nextLevel - 1) % 3 === 0) && nextLevel > 1;
-        if (needAd) { Core.SDK.interstitial(); this.time.delayedCall(500, () => this.scene.restart({ level: nextLevel, mode: 'level' })); }
-        else this.scene.restart({ level: nextLevel, mode: 'level' });
-      });
-      const menuT = this.add.text(0, 245, 'В меню', Core.TextStyles.soft(16, '#888888')).setOrigin(0.5).setInteractive();
-      menuT.on('pointerdown', () => { Core.SDK.gameplayStop(); this.scene.start('Menu'); });
-      panel.add(menuT);
+    if (this.coinMult > 1) {
+      panel.add(this.add.text(0, 22, 'Скин: монеты ×' + this.coinMult, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
     }
+
+    panel.add(this.add.text(0, 62, 'Ходы: ' + this.moves + (b.par ? ' / цель ' + b.par : ''), { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#c9c2d8' }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, 96, 'Рекорд: ★ ' + this.recordAfter, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, 128, 'Всего очков: ' + this.totalScore, { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2));
+
+    const drawIcon = (type, color) => {
+      const g = this.add.graphics();
+      g.lineStyle(3, color, 1);
+      if (type === 'home') {
+        g.beginPath(); g.moveTo(-15, -1); g.lineTo(0, -15); g.lineTo(15, -1); g.strokePath();
+        g.strokeRoundedRect(-11, -1, 22, 16, 3);
+        g.strokeRoundedRect(-4, 5, 8, 10, 2);
+      } else if (type === 'replay') {
+        g.beginPath(); g.arc(0, 0, 12, Phaser.Math.DegToRad(-90), Phaser.Math.DegToRad(180), false); g.strokePath();
+        g.fillStyle(color, 1); g.fillTriangle(0, -17, 0, -7, 9, -12);
+      } else if (type === 'next') {
+        g.fillStyle(color, 1); g.fillTriangle(-7, -13, -7, 13, 13, 0);
+      } else if (type === 'archive') {
+        g.strokeRoundedRect(-14, -11, 28, 26, 4);
+        g.lineBetween(-14, -3, 14, -3);
+        g.lineBetween(-7, -16, -7, -8);
+        g.lineBetween(7, -16, 7, -8);
+        g.fillStyle(color, 1);
+        g.fillCircle(-6, 4, 2); g.fillCircle(0, 4, 2); g.fillCircle(6, 4, 2);
+        g.fillCircle(-6, 10, 2); g.fillCircle(0, 10, 2);
+      }
+      return g;
+    };
+    const makeIconBtn = (x, y, type, fill, border, iconColor, cb) => {
+      const size = 84;
+      const shadow = this.add.rectangle(x, y + 5, size, size, 0x000000, 0.45);
+      const bg = this.add.rectangle(x, y, size, size, fill).setStrokeStyle(2, border, 1).setInteractive({ useHandCursor: true });
+      const icon = drawIcon(type, iconColor); icon.setPosition(x, y);
+      panel.add([shadow, bg, icon]);
+      bg.on('pointerover', () => { bg.setAlpha(0.9); icon.setAlpha(0.9); });
+      bg.on('pointerout', () => { bg.setAlpha(1); icon.setAlpha(1); bg.setScale(1); icon.setScale(1); });
+      bg.on('pointerdown', () => { bg.setScale(0.93); icon.setScale(0.93); });
+      bg.on('pointerup', () => { bg.setScale(1); icon.setScale(1); cb(); });
+    };
+    const close = () => { overlay.destroy(); panel.destroy(); };
+    const goMenu = () => { close(); Core.SDK.gameplayStop(); this.scene.start('Menu'); };
+
+    if (this.isDaily) {
+      makeIconBtn(-104, 226, 'home', 0x2a2138, 0x4a4460, 0xf5f0e6, goMenu);
+      makeIconBtn(0, 226, 'replay', 0x7c5cff, 0xe8c874, 0xf5f0e6, () => { close(); this.scene.restart({ mode: 'daily', level: 0, seed: this.seed, dailyDate: this.dailyDate }); });
+      makeIconBtn(104, 226, 'archive', 0xe8c874, 0xa8842a, 0x0a0a10, () => { close(); Core.SDK.gameplayStop(); this.scene.start('DailyArchive'); });
+    } else {
+      makeIconBtn(-104, 226, 'home', 0x2a2138, 0x4a4460, 0xf5f0e6, goMenu);
+      makeIconBtn(0, 226, 'replay', 0x7c5cff, 0xe8c874, 0xf5f0e6, () => { close(); this.scene.restart({ level: this.level - 1, mode: 'level' }); });
+      makeIconBtn(104, 226, 'next', 0xe8c874, 0xa8842a, 0x0a0a10, () => {
+        close();
+        const nl = this.level;
+        const needAd = ((nl - 1) % 3 === 0) && nl > 1;
+        if (needAd) { Core.SDK.interstitial(); this.time.delayedCall(500, () => this.scene.restart({ level: nl, mode: 'level' })); }
+        else this.scene.restart({ level: nl, mode: 'level' });
+      });
+    }
+
     panel.setScale(0.6); panel.setAlpha(0);
     this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 500, ease: 'Back.Out' });
   }
@@ -791,26 +1236,47 @@ class BaseGameScene extends Phaser.Scene {
   resetState() { throw new Error('not implemented'); }
   doUndo() {}
   showHint() {}
+  doShuffle() {}
+
+  getAssists() {
+    const perks = Core.activePerks();
+    const usedHints = Math.max(0, (this.savedHints || 0) - (this.hintsLeft || 0));
+    let a = (perks.hintFree ? 0 : usedHints) + (perks.undoFree ? 0 : (this.undoCount || 0)) + (perks.shuffleFree ? 0 : (this.shuffleCount || 0) * 2);
+    if (Core.SDK.get('upgrades', {}).starShield) a = Math.max(0, a - 1);
+    return a;
+  }
+
+  computeLevelScore(stars) {
+    const par = this.parMoves || Core.Solver.estimate(this.tubes || [], this.colors || 3);
+    const moves = this.moves || 0;
+    const assists = this.getAssists();
+    const over = Math.max(0, moves - par);
+    const eff = Math.round(800 * Math.max(0, Math.min(1, 1 - over / Math.max(1, par * 1.5))));
+    const starBonus = stars * 300;
+    const base = 400 + (this.colors || 3) * 60;
+    const penalty = assists * 50;
+    const perks = Core.activePerks();
+    const raw = Math.max(100, base + eff + starBonus - penalty);
+    const total = Math.round(raw * (perks.scoreMult || 1));
+    return { total: total, base: base, eff: eff, starBonus: starBonus, penalty: penalty, assists: assists, par: par, moves: moves, scoreMult: perks.scoreMult || 1 };
+  }
 }
 
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
   async create() {
     const W = this.scale.width, H = this.scale.height;
-    this.cameras.main.setBackgroundColor('#0f3460');
+    this.cameras.main.setBackgroundColor('#0a0a10');
     const loading = this.add.text(W / 2, H / 2, 'Загрузка...', Core.TextStyles.heading(30)).setOrigin(0.5);
     this.tweens.add({ targets: loading, alpha: 0.35, duration: 600, yoyo: true, repeat: -1 });
     
+    // ЖДЕМ ЗАГРУЗКУ RUSSO ONE
     try {
       await Promise.race([
-        document.fonts.load('900 32px Nunito'),
-        document.fonts.load('800 32px Nunito'),
-        document.fonts.load('700 32px Nunito'),
-        document.fonts.ready,
+        document.fonts.load('400 32px "RussoOne"', 'УРОВЕНЬ Daily 123'),
         new Promise(function (r) { setTimeout(r, 2500); })
       ]);
-    } catch (e) {}
-    
+    } catch (e) {}    
     Core.makeGradients(this);
     await Core.SDK.init();
     loading.destroy();
@@ -820,314 +1286,435 @@ class BootScene extends Phaser.Scene {
 
 class MenuScene extends Phaser.Scene {
   constructor() { super('Menu'); }
+
+  init(data) { Core._menuStyle = 1; this.menuStyle = 1; }
+
+  css(n) { return '#' + n.toString(16).padStart(6, '0'); }
+
+  getStyles() {
+    return [
+      { name: 'КЛАССИКА', bgTop: 0x1c1628, bgBot: 0x0a0a10, panel: 0x1c1628, panelHi: 0x2a2138,
+        edge: 0xd4af37, accent: 0xd4af37, accent2: 0x9a7b1f, gold: 0xe8c874,
+        text: '#f5f0e6', soft: '#9fb3c8', stroke: '#0a1428', daily: 0xe8c874, daily2: 0xa8842a,
+        dailyText: '#1a1206', glow: 0xd4af37 },
+      { name: 'PREMIUM', bgTop: 0x0a0a10, bgBot: 0x161022, panel: 0x1c1628, panelHi: 0x2a2138,
+        edge: 0x8b6fd8, accent: 0xd4af37, accent2: 0x9a7b1f, gold: 0xe8c874,
+        text: '#f5f0e6', soft: '#9a8fb8', stroke: '#000000', daily: 0x7c5cff, daily2: 0x4a35a8,
+        dailyText: '#f5f0e6', glow: 0xd4af37 },
+      { name: 'НЕОН', bgTop: 0x140823, bgBot: 0x22093a, panel: 0x26123c, panelHi: 0x341a4e,
+        edge: 0xff4ecd, accent: 0x00e5ff, accent2: 0x0099b8, gold: 0xe8c874,
+        text: '#f5f0e6', soft: '#c0a8e0', stroke: '#12061f', daily: 0xff4ecd, daily2: 0xb02090,
+        dailyText: '#f5f0e6', glow: 0xff4ecd }
+    ];
+  }
+
+  rr(w, h, r, fill, alpha, edge, edgeAlpha, lineW) {
+    const g = this.add.graphics();
+    g.fillStyle(fill, alpha);
+    g.fillRoundedRect(-w/2, -h/2, w, h, r);
+    if (edgeAlpha > 0) { g.lineStyle(lineW || 1.5, edge, edgeAlpha); g.strokeRoundedRect(-w/2, -h/2, w, h, r); }
+    return g;
+  }
+
+  label(x, y, str, size, color, opts) {
+    opts = opts || {};
+    const t = this.add.text(x, y, str, {
+      fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '400', color: color,
+      stroke: opts.stroke || '#000000', strokeThickness: opts.strokeW != null ? opts.strokeW : 0,
+      align: opts.align || 'center'
+    }).setOrigin(opts.ox != null ? opts.ox : 0.5, opts.oy != null ? opts.oy : 0.5).setResolution(2);
+    return t;
+  }
+
   create() {
+    Core.autoClaimMonthly(pfTodayMonthKey());
+    Core.syncObsidianAccess();
     const W = this.scale.width, H = this.scale.height;
+    const styles = this.getStyles();
+    const S = styles[this.menuStyle % styles.length];
+    this.S = S;
+
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillGradientStyle(S.bgTop, S.bgTop, S.bgBot, S.bgBot, 1);
     bg.fillRect(0, 0, W, H);
-    Core.Juice.ambient(this, 18, -1);
-    for (let i = 0; i < 30; i++) {
-      const x = Math.random() * W, y = Math.random() * H;
-      const size = 1 + Math.random() * 2.5;
-      const star = this.add.circle(x, y, size, 0xffffff, 0.4 + Math.random() * 0.4).setDepth(-1);
-      this.tweens.add({ targets: star, alpha: 0.05, duration: 1200 + Math.random() * 2000, yoyo: true, repeat: -1, ease: 'Sine.InOut', delay: Math.random() * 2000 });
+    this.drawAmbience(S, W, H);
+
+    for (let i = 0; i < 24; i++) {
+      const s = this.add.circle(Math.random()*W, Math.random()*H, 0.6 + Math.random()*1.6, 0xffffff, 0.25 + Math.random()*0.3);
+      this.tweens.add({ targets: s, alpha: 0.05, duration: 1400 + Math.random()*1800, yoyo: true, repeat: -1, ease: 'Sine.InOut', delay: Math.random()*1500 });
     }
 
-    // Кнопка возврата на сайт
-    const portalBtn = this.add.text(20, 45, '← На сайт', {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800',
-      color: '#ffffff', backgroundColor: '#00000099', padding: { x: 12, y: 8 }
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-    
-    portalBtn.on('pointerover', () => portalBtn.setColor('#4ecca3'));
-    portalBtn.on('pointerout',  () => portalBtn.setColor('#ffffff'));
-    portalBtn.on('pointerdown', () => {
-      window.location.href = 'https://grodt52.github.io/GRODT-Studio/#games';
-    });
+    this.createPortalButton(S);
+    this.createAchievementsButton(W - 50, 50, S);
 
-    const title = this.add.text(W / 2, H * 0.13, 'PUZZLE FLOW', Core.TextStyles.title(52)).setOrigin(0.5);
-    this.tweens.add({ targets: title, scale: 1.04, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-    this.add.text(W / 2, H * 0.19, GameRegistry.title, {
-      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '800',
-      color: '#7fd4c1', stroke: '#0f3460', strokeThickness: 2
-    }).setOrigin(0.5);
+    const title = this.label(W/2, H*0.14, 'PUZZLE FLOW', 52, S.text, { stroke: S.stroke, strokeW: 6 });
+    this.tweens.add({ targets: title, scale: 1.03, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    this.add.text(W/2, H*0.14 + 44, GameRegistry.title.toUpperCase(), {
+      fontFamily: Core.FONT, fontSize: '17px', fontStyle: '400', color: this.css(S.accent), letterSpacing: 5
+    }).setOrigin(0.5).setResolution(2);
 
     const totalScore = Core.SDK.get('totalScore', 0);
     const coins = Core.SDK.get('coins', 0);
-    this.add.text(W / 2 - 80, H * 0.25, '★ ' + totalScore, Core.TextStyles.gold(20)).setOrigin(0.5);
-    Core.coinLabel(this, W / 2 + 80, H * 0.25, coins, { fontSize: 20, iconSize: 22, anchor: 'center' });
+    const curC = this.add.container(W/2, H*0.27);
+    curC.add(this.rr(300, 46, 23, S.panel, 0.7, S.edge, 0.35));
+    curC.add(this.label(-72, 0, '★ ' + totalScore, 19, S.text, {}));
+    curC.add(Core.coinLabel(this, 62, 0, coins, { fontSize: 18, iconSize: 20, anchor: 'center' }));
 
-    this.createAchievementsButton(W - 50, 50);
+    this.createPlayButton(W/2, H*0.40, S);
+    this.createSideButton(W/2 - 95, H*0.535, 'УРОВНИ', '🗺', S, () => this.scene.start('LevelMap'));
+    this.createSideButton(W/2 + 95, H*0.535, 'МАГАЗИН', '🛒', S, () => this.scene.start('Shop'));
+    this.createDailyButton(W/2, H*0.66, S);
+    this.createArchiveButton(W/2, H*0.76, S);
+    this.createTestBadge(S);
+    this.createResetButton(W/2, H*0.93, S);
 
-    const level = Core.SDK.get('level', 1);
-    this.createBigButton(W / 2, H * 0.37, level, () => {
-      Core.Audio.unlock();
-      this.scene.start(GameRegistry.sceneKey, { level: level, mode: 'level' });
-    });
-    this.createSideButton(W / 2 - 90, H * 0.51, 'Уровни', '🗺', () => this.scene.start('LevelMap'));
-    this.createSideButton(W / 2 + 90, H * 0.51, 'Магазин', '🛒', () => this.scene.start('Shop'));
-
-    const dailyDone = Core.SDK.get('dailyDate', 0) === todayStr();
-    this.createDailyButton(W / 2, H * 0.65, dailyDone, () => {
-      if (dailyDone) { this.showToast('Возвращайся завтра!'); return; }
-      Core.Audio.unlock();
-      this.scene.start(GameRegistry.sceneKey, { mode: 'daily', level: 0, seed: todayStr() });
-    });
-
-    this.createResetButton(W / 2, H * 0.92, level);
-    this.cameras.main.fadeIn(250, 0, 0, 0);
+    this.cameras.main.fadeIn(240, 0, 0, 0);
   }
 
-  createAchievementsButton(x, y) {
-    const count = Core.Achievements.count();
-    const total = Core.Achievements.list.length;
-    const c = this.add.container(x, y);
-    const bg = this.add.circle(0, 0, 34, 0x2a2a4a).setStrokeStyle(2, 0xffd93d, 0.8);
-    c.add(bg);
-    c.add(this.add.text(0, -2, '🏆', { fontSize: '28px' }).setOrigin(0.5));
-    const badge = this.add.circle(24, -24, 14, 0xe74c3c);
-    c.add(badge);
-    c.add(this.add.text(24, -24, count + '', {
-      fontFamily: Core.FONT, fontSize: '13px', fontStyle: '900', color: '#ffffff'
-    }).setOrigin(0.5));
-
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
-    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
-    bg.on('pointerdown', () => {
-      Core.Audio.select();
-      this.scene.start('Achievements');
+  drawAmbience(S, W, H) {
+    const g = this.add.graphics();
+    const spots = [[W*0.18, H*0.22, S.glow], [W*0.85, H*0.62, S.accent], [W*0.5, H*0.95, S.daily]];
+    spots.forEach(function (sp) {
+      for (let r = 200; r > 20; r -= 36) { g.fillStyle(sp[2], 0.014); g.fillCircle(sp[0], sp[1], r); }
     });
-
-    if (count > 0) {
-      this.tweens.add({
-        targets: c, scale: 1.06, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut'
-      });
+    for (let i = 0; i < 16; i++) {
+      const p = this.add.circle(Math.random()*W, H + Math.random()*H, 1.5 + Math.random()*3, S.glow, 0.14);
+      this.tweens.add({ targets: p, y: -30, x: p.x + (Math.random()-0.5)*70, duration: 13000 + Math.random()*9000, repeat: -1, ease: 'Linear', onRepeat: () => { p.x = Math.random()*W; p.y = H + 20; } });
     }
   }
 
-  createDailyButton(x, y, done, onClick) {
-    const c = this.add.container(x, y);
-    const img = this.add.image(0, 0, done ? 'btn_daily_done' : 'btn_daily').setOrigin(0.5).setDisplaySize(340, 100);
-    c.add(img);
-    c.add(this.add.text(0, -14, done ? '🎁  ВЫПОЛНЕНО' : '🎁  ЕЖЕДНЕВНЫЙ ВЫЗОВ', {
-      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
-      color: done ? '#888888' : '#0f3460', stroke: done ? '#000000' : '#ffffff', strokeThickness: 2
-    }).setOrigin(0.5));
-    c.add(this.add.text(0, 20, done ? 'Завтра новый' : '+100 монет · только раз в день', {
-      fontFamily: Core.FONT, fontSize: '13px', fontStyle: '700',
-      color: done ? '#666666' : '#3a2a10'
-    }).setOrigin(0.5));
-    img.setInteractive({ useHandCursor: true });
-    img.on('pointerover', () => img.setAlpha(0.85));
-    img.on('pointerout',  () => img.setAlpha(1));
-    img.on('pointerdown', onClick);
-    if (!done) this.tweens.add({ targets: c, scale: 1.03, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-  }
-
-  createSideButton(x, y, text, icon, onClick) {
-    const c = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 170, 70, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
+  createPortalButton(S) {
+    const c = this.add.container(84, 46);
+    const bg = this.rr(128, 40, 20, S.panel, 0.85, S.edge, 0.5);
     c.add(bg);
-    c.add(this.add.text(0, -10, icon, { fontSize: '26px' }).setOrigin(0.5));
-    c.add(this.add.text(0, 20, text, { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
-    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
-    bg.on('pointerdown', onClick);
+    c.add(this.label(0, 0, '← НА САЙТ', 14, S.text, {}));
+    const hit = this.add.rectangle(0, 0, 128, 40, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => bg.setAlpha(0.7));
+    hit.on('pointerout', () => bg.setAlpha(1));
+    hit.on('pointerdown', () => { window.location.href = 'https://grodt52.github.io/GRODT-Studio/'; });
   }
 
-  showToast(msg) {
+  createStyleSwitcher(x, y, S, count) {
+    const c = this.add.container(x, y);
+    const w = 264, h = 40;
+    const bg = this.rr(w, h, 20, S.panel, 0.92, S.edge, 0.7);
+    c.add(bg);
+    const lbl = 'СТИЛЬ ' + (this.menuStyle + 1) + '/' + count + ' · ' + S.name + ' ▸';
+    c.add(this.label(0, 0, lbl, 15, S.text, {}));
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => bg.setAlpha(0.75));
+    hit.on('pointerout', () => bg.setAlpha(1));
+    hit.on('pointerdown', () => { Core.Audio.select(); this.scene.restart({ menuStyle: (this.menuStyle + 1) % count }); });
+  }
+
+  createAchievementsButton(x, y, S) {
+    const count = Core.Achievements.count();
+    const c = this.add.container(x, y);
+    const bg = this.add.circle(0, 0, 30, S.panel, 0.92).setStrokeStyle(2, S.gold, 0.8);
+    c.add(bg);
+    c.add(this.label(0, -1, '🏆', 24, S.text, {}));
+    c.add(this.add.circle(22, -22, 12, S.edge, 1));
+    c.add(this.label(22, -22, count + '', 12, '#f5f0e6', {}));
+    const hit = this.add.rectangle(0, 0, 72, 72, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => bg.setFillStyle(S.panelHi, 0.95));
+    hit.on('pointerout', () => bg.setFillStyle(S.panel, 0.92));
+    hit.on('pointerdown', () => { Core.Audio.select(); this.scene.start('Achievements'); });
+  }
+
+  createPlayButton(x, y, S) {
+    const level = Core.SDK.get('level', 1);
+    const c = this.add.container(x, y);
+    const w = 250, h = 86;
+    const glow = this.rr(w + 10, h + 10, 24, S.glow, 0, S.glow, 0.35, 3);
+    c.add(glow);
+    const sh = this.rr(w, h, 20, 0x000000, 0.35, 0x000000, 0); sh.y = 6; c.add(sh);
+    const body = this.add.graphics();
+    body.fillGradientStyle(S.accent, S.accent, S.accent2, S.accent2, 1);
+    body.fillRoundedRect(-w/2, -h/2, w, h, 20);
+    body.lineStyle(2, 0xffffff, 0.25); body.strokeRoundedRect(-w/2, -h/2, w, h, 20);
+    c.add(body);
+    c.add(this.label(0, -14, 'ИГРАТЬ', 30, '#f5f0e6', { stroke: S.stroke, strokeW: 4 }));
+    const badge = this.rr(150, 26, 13, 0x000000, 0.3, 0xffffff, 0.15); badge.y = 22; c.add(badge);
+    c.add(this.label(0, 22, 'УРОВЕНЬ ' + level, 14, S.text, {}));
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => body.setAlpha(0.9));
+    hit.on('pointerout', () => { body.setAlpha(1); c.setScale(1); });
+    hit.on('pointerdown', () => c.setScale(0.96));
+    hit.on('pointerup', () => { c.setScale(1); Core.Audio.unlock(); this.scene.start(GameRegistry.sceneKey, { level: level, mode: 'level' }); });
+    this.tweens.add({ targets: glow, alpha: 0.5, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  }
+
+  createSideButton(x, y, text, icon, S, onClick) {
+    const c = this.add.container(x, y);
+    const w = 172, h = 78;
+    const bg = this.rr(w, h, 16, S.panel, 0.92, S.edge, 0.6);
+    c.add(bg);
+    c.add(this.label(0, -16, icon, 24, S.text, {}));
+    c.add(this.label(0, 18, text, 19, S.text, { stroke: S.stroke, strokeW: 4 }));
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => bg.setAlpha(0.75));
+    hit.on('pointerout', () => bg.setAlpha(1));
+    hit.on('pointerdown', () => c.setScale(0.96));
+    hit.on('pointerup', () => { c.setScale(1); Core.Audio.select(); onClick(); });
+  }
+
+  drawGift(c, gx, gy, ink) {
+    const g = this.add.graphics();
+    g.fillStyle(ink, 1);
+    g.fillRoundedRect(gx - 13, gy - 4, 26, 19, 4);
+    g.fillRoundedRect(gx - 16, gy - 11, 32, 9, 3);
+    g.fillRect(gx - 2.5, gy - 11, 5, 26);
+    g.lineStyle(2.5, ink, 1);
+    g.strokeCircle(gx - 6, gy - 15, 4.5);
+    g.strokeCircle(gx + 6, gy - 15, 4.5);
+    c.add(g);
+  }
+
+  createDailyButton(x, y, S) {
+    const done = Core.SDK.get('dailyDate', 0) === todayStr();
+    const c = this.add.container(x, y);
+    const w = 300, h = 64;
+    const glow = this.rr(w + 8, h + 8, 22, S.daily, 0, S.daily, done ? 0 : 0.4, 3);
+    c.add(glow);
+    const sh = this.rr(w, h, 18, 0x000000, 0.35, 0x000000, 0); sh.y = 5; c.add(sh);
+    const body = this.add.graphics();
+    if (done) {
+      body.fillStyle(S.panel, 1); body.fillRoundedRect(-w/2, -h/2, w, h, 18);
+      body.lineStyle(1.5, S.edge, 0.4); body.strokeRoundedRect(-w/2, -h/2, w, h, 18);
+    } else {
+      body.fillGradientStyle(S.daily, S.daily, S.daily2, S.daily2, 1);
+      body.fillRoundedRect(-w/2, -h/2, w, h, 18);
+      body.lineStyle(2, 0xffffff, 0.3); body.strokeRoundedRect(-w/2, -h/2, w, h, 18);
+    }
+    c.add(body);
+    const ink = done ? 0x8f8fa8 : parseInt(S.dailyText.slice(1), 16);
+    this.drawGift(c, -w/2 + 34, 0, ink);
+    const lbl = done ? 'ВЫЗОВ ДНЯ ✓' : 'ВЫЗОВ ДНЯ';
+    c.add(this.label(16, 0, lbl, 22, done ? S.soft : S.dailyText, { stroke: '#000000', strokeW: done ? 0 : 2 }));
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => body.setAlpha(0.9));
+    hit.on('pointerout', () => { body.setAlpha(1); c.setScale(1); });
+    hit.on('pointerdown', () => c.setScale(0.97));
+    hit.on('pointerup', () => {
+      c.setScale(1);
+      if (done) { this.showToast('Возвращайся завтра!', S); return; }
+      Core.Audio.unlock();
+      this.scene.start(GameRegistry.sceneKey, { mode: 'daily', level: 0, seed: todayStr() });
+    });
+    if (!done) this.tweens.add({ targets: glow, alpha: 0.5, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  }
+
+  createResetButton(x, y, S) {
+    const level = Core.SDK.get('level', 1);
+    const c = this.add.container(x, y);
+    const bg = this.rr(220, 40, 12, S.panel, 0.6, S.edge, 0.3);
+    c.add(bg);
+    const t = this.label(0, 0, '↺  СБРОС ПРОГРЕССА', 14, S.soft, {});
+    c.add(t);
+    const hit = this.add.rectangle(0, 0, 220, 40, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => { bg.setAlpha(0.9); t.setColor('#e0556a'); });
+    hit.on('pointerout', () => { bg.setAlpha(1); t.setColor(S.soft); });
+    hit.on('pointerdown', () => this.confirmReset(level, S));
+  }
+
+  showToast(msg, S) {
     const W = this.scale.width, H = this.scale.height;
-    const t = this.add.text(W / 2, H * 0.85, msg, {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+    const t = this.add.text(W/2, H*0.82, msg, {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: S.text,
       backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
-    }).setOrigin(0.5).setDepth(1000);
-    this.tweens.add({ targets: t, alpha: 0, y: H * 0.8, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+    }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    this.tweens.add({ targets: t, alpha: 0, y: H*0.78, duration: 1300, delay: 900, onComplete: () => t.destroy() });
   }
 
-  createBigButton(x, y, level, onClick) {
-    const c = this.add.container(x, y);
-    c.add(this.add.rectangle(0, 8, 320, 120, 0x000000, 0.4).setOrigin(0.5));
-    const img = this.add.image(0, 0, 'btn_big').setOrigin(0.5).setDisplaySize(320, 120);
-    c.add(img);
-    c.add(this.add.text(0, -24, 'ИГРАТЬ', {
-      fontFamily: Core.FONT, fontSize: '38px', fontStyle: '900', color: '#ffffff', stroke: '#0f3460', strokeThickness: 5
-    }).setOrigin(0.5));
-    const badge = this.add.rectangle(0, 30, 220, 42, 0x0f3460, 0.9).setOrigin(0.5).setStrokeStyle(2, 0xffd93d, 0.9);
-    c.add(badge);
-    c.add(this.add.text(0, 30, 'УРОВЕНЬ ' + level, {
-      fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900', color: '#ffd93d', stroke: '#000000', strokeThickness: 2
-    }).setOrigin(0.5));
-    img.setInteractive({ useHandCursor: true });
-    img.on('pointerover', () => img.setTint(0xc9ffe8));
-    img.on('pointerout',  () => img.clearTint());
-    img.on('pointerdown', () => { this.tweens.add({ targets: c, scale: c.scale * 0.95, duration: 80, yoyo: true }); onClick(); });
-    this.tweens.add({ targets: c, scale: 1.03, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-  }
-
-  createResetButton(x, y, level) {
-    const c = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 240, 48, 0x2a2a4a, 1).setOrigin(0.5).setStrokeStyle(2, 0x888888, 0.7);
-    c.add(bg);
-    const label = this.add.text(0, 0, '↺  Сбросить прогресс', { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#cccccc' }).setOrigin(0.5);
-    c.add(label);
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => { bg.setFillStyle(0x3a3a5a); bg.setStrokeStyle(2, 0xff6b6b, 0.9); label.setColor('#ffffff'); });
-    bg.on('pointerout',  () => { bg.setFillStyle(0x2a2a4a); bg.setStrokeStyle(2, 0x888888, 0.7); label.setColor('#cccccc'); });
-    bg.on('pointerdown', () => { this.tweens.add({ targets: c, scale: 0.94, duration: 80, yoyo: true }); this.confirmReset(level); });
-  }
-
-  confirmReset(currentLevel) {
+  confirmReset(currentLevel, S) {
     const W = this.scale.width, H = this.scale.height;
     const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0).setInteractive().setDepth(1001);
-    const panel = this.add.container(W / 2, H / 2).setDepth(1002);
-    panel.add(this.add.rectangle(0, 0, 440, 320, 0x1a1a2e).setStrokeStyle(4, 0xff6b6b));
-    panel.add(this.add.text(0, -110, 'Сбросить прогресс?', Core.TextStyles.heading(26)).setOrigin(0.5));
-    panel.add(this.add.text(0, -40,
-      'Уровень ' + currentLevel + ' → 1\nСчёт, монеты, скины, ачивки обнулятся.', {
-      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '700', color: '#aaaaaa', align: 'center', lineSpacing: 6
-    }).setOrigin(0.5));
-    const yes = this.add.rectangle(-100, 95, 170, 64, 0xff6b6b).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    panel.add(yes);
-    panel.add(this.add.text(-100, 95, 'Сбросить', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
-    yes.on('pointerover', () => yes.setFillStyle(0xff8a8a));
-    yes.on('pointerout',  () => yes.setFillStyle(0xff6b6b));
+    const panel = this.add.container(W/2, H/2).setDepth(1002);
+    panel.add(this.add.rectangle(0, 0, 440, 300, S.panel).setStrokeStyle(3, 0xe0556a));
+    panel.add(this.label(0, -100, 'Сбросить прогресс?', 26, S.text, { stroke: S.stroke, strokeW: 3 }));
+    panel.add(this.add.text(0, -35, 'Уровень ' + currentLevel + ' → 1\nСчёт, монеты, скины и достижения обнулятся.', {
+      fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: S.soft, align: 'center', lineSpacing: 6
+    }).setOrigin(0.5).setResolution(2));
+    const yes = this.add.rectangle(-100, 85, 170, 60, 0xe0556a).setInteractive({ useHandCursor: true });
+    panel.add(yes); panel.add(this.label(-100, 85, 'СБРОСИТЬ', 18, '#f5f0e6', {}));
     yes.on('pointerdown', async () => {
       await Core.SDK.save(JSON.parse(JSON.stringify(Core.DEFAULT_SAVE)));
-      overlay.destroy(); panel.destroy(); this.scene.restart();
+      overlay.destroy(); panel.destroy(); this.scene.restart({ menuStyle: this.menuStyle });
     });
-    const no = this.add.rectangle(100, 95, 170, 64, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x888888, 0.7).setInteractive({ useHandCursor: true });
-    panel.add(no);
-    panel.add(this.add.text(100, 95, 'Отмена', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
-    no.on('pointerover', () => no.setFillStyle(0x3a3a5a));
-    no.on('pointerout',  () => no.setFillStyle(0x2a2a4a));
+    const no = this.add.rectangle(100, 85, 170, 60, S.panelHi).setStrokeStyle(2, S.edge, 0.6).setInteractive({ useHandCursor: true });
+    panel.add(no); panel.add(this.label(100, 85, 'ОТМЕНА', 18, S.text, {}));
     no.on('pointerdown', () => { overlay.destroy(); panel.destroy(); });
     panel.setScale(0.7); panel.setAlpha(0);
-    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 300, ease: 'Back.Out' });
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 280, ease: 'Back.Out' });
+  }
+
+  createArchiveButton(x, y, S) {
+    const c = this.add.container(x, y);
+    const w = 300, h = 56;
+    const bg = this.rr(w, h, 16, S.panel, 0.9, S.edge, 0.6);
+    c.add(bg);
+    c.add(this.label(0, 0, '📅  АРХИВ ВЫЗОВОВ', 18, S.text, { stroke: S.stroke, strokeW: 2 }));
+    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    c.add(hit);
+    hit.on('pointerover', () => bg.setAlpha(0.75));
+    hit.on('pointerout', () => bg.setAlpha(1));
+    hit.on('pointerdown', () => { Core.Audio.select(); this.scene.start('DailyArchive'); });
+  }
+
+  createTestBadge(S) {
+    if (!Core.TEST_OBSIDIAN) return;
+    if (Core.SDK.get('currentSkin', 'classic') !== 'obsidian') return;
+    const W = this.scale.width;
+    const c = this.add.container(W / 2, 45);
+    c.add(this.rr(230, 36, 18, 0x241a3a, 0.95, 0x7c5cff, 0.9));
+    c.add(this.label(0, 0, '🧪 ОБСИДИАН · ТЕСТ', 14, '#e8c874', {}));
   }
 }
 
 class AchievementsScene extends Phaser.Scene {
   constructor() { super('Achievements'); }
+
   create() {
     const W = this.scale.width, H = this.scale.height;
+    this.cameras.main.setBackgroundColor('#0a0a10');
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
-    Core.Juice.ambient(this, 14, -1);
+    Core.Juice.ambient(this, 10, -1);
 
-    const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('Menu'));
+    this.add.text(W / 2, 45, 'ДОСТИЖЕНИЯ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2);
+    this.countText = this.add.text(W - 20, 45, '', { fontFamily: Core.FONT, fontSize: '20px', fontStyle: '400', color: '#e8c874' }).setOrigin(1, 0.5).setResolution(2);
 
-    this.add.text(W / 2, 45, 'ДОСТИЖЕНИЯ', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.maskTop = 90;
+    this.listY = 140;
+    this.listContainer = this.add.container(0, this.listY);
+    this.renderList();
+    this.cameras.main.fadeIn(240, 0, 0, 0);
+  }
 
-    const count = Core.Achievements.count();
-    const total = Core.Achievements.list.length;
-    this.add.text(W / 2, 92, count + ' / ' + total, Core.TextStyles.gold(22)).setOrigin(0.5);
+  iconOf(id) {
+    const map = {
+      first_win: ['flag', 1], lvl_10: ['flag', 2], lvl_25: ['flag', 2], lvl_50: ['flag', 3], lvl_100: ['flag', 4],
+      score_10k: ['gem', 2], score_50k: ['gem', 3],
+      coins_500: ['coin', 1], coins_2000: ['coin', 3],
+      perfect_5: ['star', 2], perfect_20: ['star', 3], stars_100: ['star', 3],
+      daily_first: ['cal', 1], daily_7: ['cal', 2], daily_30: ['cal', 3], month_stars_30: ['cal', 4],
+      collector: ['tube', 2],
+      upgrades_1: ['gear', 1], upgrades_all: ['gear', 3],
+      record_10: ['chart', 2]
+    };
+    return map[id] || ['star', 1];
+  }
 
-    const barW = W - 120, barH = 12, barY = 118;
-    this.add.rectangle(W / 2, barY, barW, barH, 0x1a1a2e).setOrigin(0.5).setStrokeStyle(2, 0x444455);
-    if (count > 0) {
-      const fillW = (barW - 4) * (count / total);
-      const fill = this.add.rectangle(W / 2 - barW / 2 + 2, barY, fillW, barH - 4, 0xffd93d).setOrigin(0, 0.5);
-      this.tweens.add({ targets: fill, scaleX: 1.02, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  tierColor(t) { return [0, 0xcd7f32, 0xc0c0c0, 0xe8c874, 0x7c5cff][t] || 0xe8c874; }
+
+  drawGlyph(g, cat, color) {
+    g.lineStyle(2.5, color, 1);
+    g.fillStyle(color, 1);
+    if (cat === 'flag') {
+      g.lineBetween(-4, -9, -4, 10);
+      g.beginPath(); g.moveTo(-4, -9); g.lineTo(9, -5); g.lineTo(-4, -1); g.closePath(); g.fillPath();
+    } else if (cat === 'gem') {
+      g.beginPath(); g.moveTo(0, -10); g.lineTo(9, -2); g.lineTo(0, 10); g.lineTo(-9, -2); g.closePath(); g.fillPath();
+      g.lineStyle(1.5, 0x0a0a10, 0.5); g.lineBetween(0, -10, 0, 10); g.lineBetween(-9, -2, 9, -2);
+    } else if (cat === 'coin') {
+      g.fillCircle(0, 0, 10);
+      g.fillStyle(0x0a0a10, 0.35); g.fillCircle(0, 0, 6);
+      g.fillStyle(color, 1); g.fillCircle(0, 0, 3.5);
+    } else if (cat === 'star') {
+      const pts = []; for (let i = 0; i < 10; i++) { const r = i % 2 === 0 ? 10 : 4.5; const a = -Math.PI / 2 + i * Math.PI / 5; pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < 10; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fillPath();
+    } else if (cat === 'cal') {
+      g.lineStyle(2.5, color, 1); g.strokeRoundedRect(-9, -8, 18, 17, 3);
+      g.lineBetween(-9, -3, 9, -3);
+      g.lineBetween(-4, -11, -4, -5); g.lineBetween(4, -11, 4, -5);
+      g.fillCircle(-3, 3, 1.7); g.fillCircle(3, 3, 1.7);
+    } else if (cat === 'tube') {
+      g.lineStyle(2.5, color, 1); g.strokeRoundedRect(-6, -9, 12, 18, 5);
+      g.fillStyle(color, 0.55); g.fillRoundedRect(-4, 1, 8, 7, { tl: 2, tr: 2, bl: 4, br: 4 });
+    } else if (cat === 'gear') {
+      const hp = []; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 - Math.PI / 6; hp.push([Math.cos(a) * 9, Math.sin(a) * 9]); }
+      g.beginPath(); g.moveTo(hp[0][0], hp[0][1]); for (let i = 1; i < 6; i++) g.lineTo(hp[i][0], hp[i][1]); g.closePath(); g.fillPath();
+      g.fillStyle(0x241a3a, 1); g.fillCircle(0, 0, 3.5);
+    } else if (cat === 'chart') {
+      g.fillRect(-9, 3, 5, 7); g.fillRect(-2, -2, 5, 12); g.fillRect(5, -7, 5, 17);
     }
+  }
 
-    const listY = 160;
-    const rowH = 95;
-    const rowGap = 12;
-    const rowW = W - 60;
-    const container = this.add.container(0, listY);
+  drawAchBadge(parent, x, y, cat, tier, unlocked) {
+    const col = unlocked ? this.tierColor(tier) : 0x3a3450;
+    const ring = this.add.graphics();
+    ring.fillStyle(0x241a3a, unlocked ? 1 : 0.8); ring.fillCircle(0, 0, 26);
+    ring.lineStyle(2.5, col, unlocked ? 1 : 0.5); ring.strokeCircle(0, 0, 26);
+    ring.setPosition(x, y);
+    const glyph = this.add.graphics();
+    glyph.setPosition(x, y);
+    this.drawGlyph(glyph, cat, unlocked ? col : 0x55506a);
+    parent.add([ring, glyph]);
+  }
 
-    const list = Core.Achievements.list;
-    const saved = Core.SDK.get('achievements', {});
-
-    list.forEach((ach, i) => {
-      const unlocked = !!saved[ach.id];
-      const y = i * (rowH + rowGap);
+  renderList() {
+    const W = this.scale.width, H = this.scale.height;
+    const s = Core.Achievements.stats();
+    const un = Core.Achievements.unlocked();
+    const claimedMap = Core.Achievements.claimed();
+    this.listContainer.removeAll(true);
+    const rowH = 88, gap = 10, rowW = W - 60;
+    Core.Achievements.list.forEach((a, i) => {
+      const y = i * (rowH + gap);
       const c = this.add.container(W / 2, y);
-
-      const bgColor = unlocked ? 0x2e2a1a : 0x1f1f30;
-      const strokeColor = unlocked ? 0xffd93d : 0x333344;
-      const rowBg = this.add.rectangle(0, 0, rowW, rowH, bgColor).setOrigin(0.5).setStrokeStyle(2, strokeColor, unlocked ? 1 : 0.5);
-      c.add(rowBg);
-
-      const iconBg = this.add.circle(-rowW / 2 + 60, 0, 36, unlocked ? 0x3a2e10 : 0x252535)
-        .setStrokeStyle(2, strokeColor, unlocked ? 0.9 : 0.4);
-      c.add(iconBg);
-      const icon = this.add.text(-rowW / 2 + 60, 0, unlocked ? ach.icon : '🔒', {
-        fontSize: unlocked ? '40px' : '28px'
-      }).setOrigin(0.5);
-      if (!unlocked) icon.setAlpha(0.4);
-      c.add(icon);
-
-      c.add(this.add.text(-rowW / 2 + 120, -18, ach.name, {
-        fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
-        color: unlocked ? '#ffd93d' : '#666677'
-      }).setOrigin(0, 0.5));
-
-      c.add(this.add.text(-rowW / 2 + 120, 12, ach.desc, {
-        fontFamily: Core.FONT, fontSize: '14px', fontStyle: '700',
-        color: unlocked ? '#cccccc' : '#555566',
-        wordWrap: { width: rowW - 200 }
-      }).setOrigin(0, 0.5));
-
-      if (unlocked) {
-        c.add(this.add.text(rowW / 2 - 30, 0, '✓', {
-          fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#4ecca3'
-        }).setOrigin(0.5));
-      } else {
-        c.add(this.add.text(rowW / 2 - 30, 0, '—', {
-          fontFamily: Core.FONT, fontSize: '24px', fontStyle: '900', color: '#444455'
-        }).setOrigin(0.5));
-      }
-
-      if (unlocked) {
-        this.tweens.add({
-          targets: icon, scale: 1.1, duration: 1400 + i * 100, yoyo: true, repeat: -1, ease: 'Sine.InOut'
-        });
-      }
-
-      container.add(c);
+      const p = Core.Achievements.progress(a, s);
+      const done = un.indexOf(a.id) >= 0 || p.done;
+      const rewarded = !!claimedMap[a.id];
+      const reward = Core.Achievements.rewardFor(a.id);
+      const rewardStr = Core.Achievements.rewardLabel(reward);
+      const ic = this.iconOf(a.id);
+      const card = this.add.graphics();
+      card.fillStyle(0x1c1628, done ? 1 : 0.88); card.fillRoundedRect(-rowW / 2, -rowH / 2, rowW, rowH, 14);
+      card.lineStyle(2, done ? this.tierColor(ic[1]) : 0x3a3450, done ? 0.9 : 0.5); card.strokeRoundedRect(-rowW / 2, -rowH / 2, rowW, rowH, 14);
+      c.add(card);
+      this.drawAchBadge(c, -rowW / 2 + 48, 0, ic[0], ic[1], done);
+      c.add(this.add.text(-rowW / 2 + 92, -22, a.title, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: done ? '#e8c874' : '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+      c.add(this.add.text(-rowW / 2 + 92, -2, a.desc, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0, 0.5).setResolution(2));
+      const rewardLine = rewarded ? '✓ ' + rewardStr : ('Награда: ' + rewardStr);
+      c.add(this.add.text(-rowW / 2 + 92, 18, rewardLine, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: rewarded ? '#7c5cff' : '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
+      c.add(this.add.text(rowW / 2 - 20, -22, (done ? '✓ ' : '') + p.cur + '/' + p.goal, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: done ? '#e8c874' : '#c9c2d8' }).setOrigin(1, 0.5).setResolution(2));
+      const barX = -rowW / 2 + 92, barY = 32, barW = rowW - 180, barH = 8;
+      const track = this.add.graphics(); track.fillStyle(0x0a0a10, 1); track.fillRoundedRect(barX, barY - barH / 2, barW, barH, 4); c.add(track);
+      const fillW = Math.max(0, Math.min(1, p.cur / p.goal)) * barW;
+      if (fillW > 0) { const fg = this.add.graphics(); fg.fillStyle(done ? this.tierColor(ic[1]) : 0x7c5cff, 1); fg.fillRoundedRect(barX, barY - barH / 2, fillW, barH, 4); c.add(fg); }
+      this.listContainer.add(c);
     });
+    this.countText.setText(Core.Achievements.count() + ' / ' + Core.Achievements.list.length);
 
-    const totalH = list.length * (rowH + rowGap);
-    const viewH = H - listY - 60;
-    if (totalH > viewH) {
-      const maskShape = this.make.graphics({ x: 0, y: listY });
-      maskShape.fillRect(0, 0, W, viewH);
-      container.setMask(maskShape.createGeometryMask());
-
-      let dragging = false, startY = 0, startScrollY = 0;
-      const minY = listY - (totalH - viewH);
-      const maxY = listY;
-      container.y = listY;
-
-      this.input.on('pointerdown', (p) => {
-        if (p.y > listY - 20) { dragging = true; startY = p.y; startScrollY = container.y; }
-      });
-      this.input.on('pointerup', () => { dragging = false; });
-      this.input.on('pointermove', (p) => {
-        if (!dragging) return;
-        let ny = startScrollY + (p.y - startY);
-        ny = Math.max(minY, Math.min(maxY, ny));
-        container.y = ny;
-      });
-
-      this.input.on('wheel', (p, objs, dx, dy) => {
-        let ny = container.y - dy * 0.5;
-        ny = Math.max(minY, Math.min(maxY, ny));
-        container.y = ny;
-      });
-
-      const hint = this.add.text(W / 2, H - 30, '↑ листай ↓', Core.TextStyles.soft(12, '#555555')).setOrigin(0.5);
-      this.tweens.add({ targets: hint, alpha: 0.3, duration: 1200, yoyo: true, repeat: -1 });
-    }
-
-    this.cameras.main.fadeIn(250, 0, 0, 0);
+    const totalH = Core.Achievements.list.length * (rowH + gap);
+    const viewH = H - this.maskTop - 20;
+    if (this.listMask) { this.listMask.destroy(); this.listMask = null; }
+    const maskShape = this.make.graphics({ x: 0, y: this.maskTop });
+    maskShape.fillRect(0, 0, W, viewH);
+    this.listContainer.setMask(maskShape.createGeometryMask());
+    this.listMask = maskShape;
+    this.listContainer.y = this.listY;
+    const minY = this.listY - Math.max(0, totalH - viewH);
+    const maxY = this.listY;
+    let dragging = false, startY = 0, startScrollY = 0;
+    this.input.removeAllListeners('pointerdown');
+    this.input.removeAllListeners('pointerup');
+    this.input.removeAllListeners('pointermove');
+    this.input.removeAllListeners('wheel');
+    this.input.on('pointerdown', (p) => { if (p.y > this.maskTop) { dragging = true; startY = p.y; startScrollY = this.listContainer.y; } });
+    this.input.on('pointerup', () => { dragging = false; });
+    this.input.on('pointermove', (p) => { if (dragging) this.listContainer.y = Math.max(minY, Math.min(maxY, startScrollY + (p.y - startY))); });
+    this.input.on('wheel', (p, objs, dx, dy) => { this.listContainer.y = Math.max(minY, Math.min(maxY, this.listContainer.y - dy * 0.5)); });
   }
 }
 
@@ -1137,23 +1724,23 @@ class LevelMapScene extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
     this.currentPage = Math.floor((Core.SDK.get('level', 1) - 1) / 20);
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 14, -1);
     const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+      fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6'
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('Menu'));
     this.add.text(W / 2, 45, 'УРОВНИ', Core.TextStyles.heading(30)).setOrigin(0.5);
     this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 20, iconSize: 22, anchor: 'right' });
     this.gridContainer = this.add.container(0, 0);
-    this.pageText = this.add.text(W / 2, H - 60, '', Core.TextStyles.soft(16, '#cccccc')).setOrigin(0.5);
-    this.prevBtn = this.add.rectangle(60, H - 60, 60, 50, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
-    this.add.text(60, H - 60, '‹', { fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5);
+    this.pageText = this.add.text(W / 2, H - 60, '', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5);
+    this.prevBtn = this.add.rectangle(60, H - 60, 60, 50, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.6);
+    this.add.text(60, H - 60, '‹', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5);
     this.prevBtn.setInteractive({ useHandCursor: true });
     this.prevBtn.on('pointerdown', () => { if (this.currentPage > 0) { this.currentPage--; this.renderPage(); } });
-    this.nextBtn = this.add.rectangle(W - 60, H - 60, 60, 50, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.6);
-    this.add.text(W - 60, H - 60, '›', { fontFamily: Core.FONT, fontSize: '32px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5);
+    this.nextBtn = this.add.rectangle(W - 60, H - 60, 60, 50, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.6);
+    this.add.text(W - 60, H - 60, '›', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5);
     this.nextBtn.setInteractive({ useHandCursor: true });
     this.nextBtn.on('pointerdown', () => { this.currentPage++; this.renderPage(); });
     this.renderPage();
@@ -1161,16 +1748,16 @@ class LevelMapScene extends Phaser.Scene {
   }
   renderPage() {
     this.gridContainer.removeAll(true);
-    const W = this.scale.width;
+    const W = this.scale.width, H = this.scale.height;
     const currentLevel = Core.SDK.get('level', 1);
     const bestStars = Core.SDK.get('bestStars', {});
-    const perPage = 20;
-    const cols = 4, rows = 5;
+    const bestScores = Core.SDK.get('bestScores', {});
+    const perPage = 20, cols = 4;
     const startLevel = this.currentPage * perPage + 1;
-    const cellW = 150, cellH = 130, gapX = 15, gapY = 15;
+    const cellW = 150, cellH = 150, gapX = 15, gapY = 15;
     const totalW = cols * cellW + (cols - 1) * gapX;
     const startX = (W - totalW) / 2 + cellW / 2;
-    const startY = 160;
+    const startY = 150;
     for (let i = 0; i < perPage; i++) {
       const lvl = startLevel + i;
       const col = i % cols, row = Math.floor(i / cols);
@@ -1180,33 +1767,36 @@ class LevelMapScene extends Phaser.Scene {
       const done = lvl < currentLevel;
       const isCurrent = lvl === currentLevel;
       const stars = bestStars[lvl] || 0;
+      const record = bestScores[lvl] || 0;
       const cell = this.add.container(x, y);
-      let bgColor = 0x2a2a4a, strokeColor = 0x444455, strokeAlpha = 0.5;
-      if (isCurrent) { strokeColor = 0x4ecca3; strokeAlpha = 1; }
-      else if (done) { strokeColor = 0xffd93d; strokeAlpha = 0.7; }
+      let bgColor = 0x1c1628, strokeColor = 0x4a4460, strokeAlpha = 0.6;
+      if (isCurrent) { strokeColor = 0xd4af37; strokeAlpha = 1; }
+      else if (done) { strokeColor = 0xe8c874; strokeAlpha = 0.75; }
       const bg = this.add.rectangle(0, 0, cellW, cellH, bgColor).setOrigin(0.5).setStrokeStyle(isCurrent ? 3 : 2, strokeColor, strokeAlpha);
       cell.add(bg);
-      if (isCurrent) this.tweens.add({ targets: bg, alpha: 0.7, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      if (isCurrent) this.tweens.add({ targets: bg, alpha: 0.75, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       if (locked) {
-        cell.add(this.add.text(0, -8, '🔒', { fontSize: '32px' }).setOrigin(0.5).setAlpha(0.4));
+        cell.add(this.add.text(0, -8, '🔒', { fontSize: '34px' }).setOrigin(0.5).setAlpha(0.45));
       } else {
-        cell.add(this.add.text(0, -18, String(lvl), {
-          fontFamily: Core.FONT, fontSize: '36px', fontStyle: '900',
-          color: isCurrent ? '#4ecca3' : (done ? '#ffd93d' : '#ffffff'),
-          stroke: '#000000', strokeThickness: 2
-        }).setOrigin(0.5));
-        if (done || isCurrent) {
-          for (let s = 0; s < 3; s++) {
-            const on = s < stars;
-            cell.add(this.add.text(-30 + s * 30, 30, '★', {
-              fontFamily: Core.FONT, fontSize: '20px', fontStyle: '900',
-              color: on ? '#ffd93d' : '#444455'
-            }).setOrigin(0.5));
-          }
+        cell.add(this.add.text(0, -34, String(lvl), {
+          fontFamily: Core.FONT, fontSize: '38px', fontStyle: '400',
+          color: isCurrent ? '#e8c874' : (done ? '#f5f0e6' : '#c9c2d8'),
+          stroke: '#000000', strokeThickness: 3
+        }).setOrigin(0.5).setResolution(2));
+        for (let s = 0; s < 3; s++) {
+          const on = s < stars;
+          cell.add(this.add.text(-30 + s * 30, 8, '★', {
+            fontFamily: Core.FONT, fontSize: '22px', fontStyle: '400',
+            color: on ? '#e8c874' : '#3a3450'
+          }).setOrigin(0.5).setResolution(2));
         }
+        cell.add(this.add.text(0, 44, record ? ('РЕКОРД ★ ' + record) : 'РЕКОРДА НЕТ', {
+          fontFamily: Core.FONT, fontSize: record ? '14px' : '12px', fontStyle: '400',
+          color: record ? '#e8c874' : '#6f6785'
+        }).setOrigin(0.5).setResolution(2));
         bg.setInteractive({ useHandCursor: true });
-        bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
-        bg.on('pointerout',  () => bg.setFillStyle(bgColor));
+        bg.on('pointerover', () => bg.setFillStyle(0x2a2138));
+        bg.on('pointerout', () => bg.setFillStyle(bgColor));
         bg.on('pointerdown', () => { Core.Audio.select(); this.scene.start('BallSort', { level: lvl, mode: 'level' }); });
       }
       this.gridContainer.add(cell);
@@ -1220,145 +1810,194 @@ class LevelMapScene extends Phaser.Scene {
 
 class ShopScene extends Phaser.Scene {
   constructor() { super('Shop'); }
+
+  init() {
+    this.shopTab = Core._shopTab || 'consumables';
+    this.skinTab = Core._skinTab || 'tubes';
+  }
+
   create() {
+    Core.syncObsidianAccess();
     const W = this.scale.width, H = this.scale.height;
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x16213e, 0x0f3460, 1);
+    bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
-    Core.Juice.ambient(this, 12, -1);
+    Core.Juice.ambient(this, 10, -1);
+
     const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '900', color: '#ffffff'
+      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6'
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.scene.start('Menu'));
-    this.add.text(W / 2, 45, 'МАГАЗИН', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.add.text(W / 2, 45, 'МАГАЗИН', {
+      fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6',
+      stroke: '#000000', strokeThickness: 4
+    }).setOrigin(0.5).setResolution(2);
     this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 22, iconSize: 24, anchor: 'right' });
-    this.add.text(W / 2, 130, '— ПОДСКАЗКИ —', Core.TextStyles.soft(16, '#7fd4c1')).setOrigin(0.5);
-    this.createItemCard(W / 2 - 100, 220, '💡', '+1 подсказка', 30, () => this.buyHint(1, 30));
-    this.createItemCard(W / 2 + 100, 220, '💡', '+3 подсказки', 80, () => this.buyHint(3, 80), 'выгодно');
-    
-    const tabY = 345;
-    this.tubeTab = this.makeTab(W / 2 - 90, tabY, 'ТРУБЫ', () => this.setSkinTab('tubes'));
-    this.ballTab = this.makeTab(W / 2 + 90, tabY, 'ШАРЫ',  () => this.setSkinTab('balls'));
-    this.skinTab = null;
-    this.skinContainer = this.add.container(0, 0);
-    this.setSkinTab('tubes');
+    this.invText = this.add.text(W / 2, 92, 'Подсказок в инвентаре: ' + Core.SDK.get('hintsOwned', 0), {
+      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8'
+    }).setOrigin(0.5).setResolution(2);
 
-    this.add.text(W / 2, H - 50, 'В инвентаре подсказок: ' + Core.SDK.get('hintsOwned', 3), Core.TextStyles.soft(14, '#888888')).setOrigin(0.5);
-    this.cameras.main.fadeIn(250, 0, 0, 0);
+    this.content = this.add.container(0, 0);
+    this.tabs = {};
+    const cats = [['consumables', 'РАСХОДНИКИ'], ['upgrades', 'УЛУЧШЕНИЯ'], ['skins', 'СКИНЫ']];
+    cats.forEach((c, i) => { this.tabs[c[0]] = this.makeCategoryTab(W / 2 + (i - 1) * 220, 140, c[1], c[0]); });
+    this.setShopTab(this.shopTab);
+    this.cameras.main.fadeIn(240, 0, 0, 0);
   }
 
-  makeTab(x, y, text, onClick) {
-    const bg = this.add.rectangle(x, y, 160, 48, 0x2a2a4a).setStrokeStyle(2, 0x4ecca3, 0.5);
-    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '900', color: '#888888' }).setOrigin(0.5);
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerdown', onClick);
+  makeCategoryTab(x, y, text, key) {
+    const bg = this.add.rectangle(x, y, 200, 48, 0x1c1628).setStrokeStyle(2, 0x4a4460, 0.7).setInteractive({ useHandCursor: true });
+    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2);
+    bg.on('pointerdown', () => { Core.Audio.select(); this.setShopTab(key); });
     return { bg, lbl };
   }
-  setSkinTab(tab) {
-    if (this.skinTab === tab) return;
-    this.skinTab = tab;
-    const on = 0x4ecca3, off = 0x2a2a4a;
-    this.tubeTab.bg.setFillStyle(tab === 'tubes' ? on : off);
-    this.tubeTab.lbl.setColor(tab === 'tubes' ? '#0f3460' : '#888888');
-    this.ballTab.bg.setFillStyle(tab === 'balls' ? on : off);
-    this.ballTab.lbl.setColor(tab === 'balls' ? '#0f3460' : '#888888');
-    this.renderSkinTab();
+
+  setShopTab(tab) {
+    this.shopTab = tab; Core._shopTab = tab;
+    Object.keys(this.tabs).forEach(k => {
+      const on = k === tab;
+      this.tabs[k].bg.setFillStyle(on ? 0xe8c874 : 0x1c1628);
+      this.tabs[k].bg.setStrokeStyle(2, on ? 0xa8842a : 0x4a4460, on ? 1 : 0.7);
+      this.tabs[k].lbl.setColor(on ? '#0a0a10' : '#9a8fb8');
+    });
+    this.content.removeAll(true);
+    if (tab === 'consumables') this.renderConsumables();
+    else if (tab === 'upgrades') this.renderUpgrades();
+    else this.renderSkins();
   }
-  renderSkinTab() {
-    this.skinContainer.removeAll(true);
-    const startY = 410, rowH = 130;
+
+  renderConsumables() {
+    const W = this.scale.width;
+    this.content.add(this.add.text(W / 2, 205, 'Подсказки показывают лучший ход. Тратятся на уровнях и в вызовах.', {
+      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 }
+    }).setOrigin(0.5).setResolution(2));
+    this.createHintCard(W / 2 - 220, 320, 1, 30);
+    this.createHintCard(W / 2, 320, 3, 80, 'ВЫГОДНО');
+    this.createHintCard(W / 2 + 220, 320, 10, 240, 'НАБОР');
+  }
+
+  createHintCard(x, y, count, price, badge) {
+    const c = this.add.container(x, y);
+    const w = 190, h = 160;
+    const bg = this.add.rectangle(0, 0, w, h, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.75);
+    c.add(bg);
+    c.add(this.add.text(0, -48, '💡', { fontSize: '42px' }).setOrigin(0.5));
+    c.add(this.add.text(0, -2, '+' + count + ' подсказк' + (count === 1 ? 'а' : (count < 5 ? 'и' : 'ок')), {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', align: 'center', wordWrap: { width: w - 24 }
+    }).setOrigin(0.5).setResolution(2));
+    const btn = this.add.rectangle(0, 48, 150, 48, 0x241a3a).setStrokeStyle(2, 0xd4af37, 1).setInteractive({ useHandCursor: true });
+    c.add(btn);
+    c.add(Core.coinLabel(this, 0, 48, price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
+    if (badge) {
+      c.add(this.add.rectangle(58, -66, 84, 26, 0x7c5cff).setOrigin(0.5));
+      c.add(this.add.text(58, -66, badge, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setResolution(2));
+    }
+    btn.on('pointerover', () => btn.setAlpha(0.85));
+    btn.on('pointerout', () => btn.setAlpha(1));
+    btn.on('pointerdown', () => this.buyHint(count, price));
+    this.content.add(c);
+  }
+
+  renderUpgrades() {
+    const W = this.scale.width;
+    this.content.add(this.add.text(W / 2, 205, 'Постоянные улучшения. Покупаются один раз и работают всегда.', {
+      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 }
+    }).setOrigin(0.5).setResolution(2));
+    this.createUpgradeCard(280, 'coinBonus', 'КОШЕЛЬ', '+10 монет за каждую победу', 400);
+    this.createUpgradeCard(410, 'dailyBonus', 'ДНЕВНОЙ БОНУС', '+50 монет за первое прохождение дня', 500);
+    this.createUpgradeCard(540, 'starShield', 'ЩИТ ЗВЁЗД', 'Первая подсказка/отмена/шаффл не снижают звёзды', 800);
+  }
+
+  createUpgradeCard(y, key, name, desc, cost) {
+    const W = this.scale.width;
+    const owned = !!Core.SDK.get('upgrades', {})[key];
+    const c = this.add.container(W / 2, y);
+    const bg = this.add.rectangle(0, 0, W - 80, 110, 0x1c1628).setStrokeStyle(2, owned ? 0xd4af37 : 0x4a4460, owned ? 1 : 0.65);
+    c.add(bg);
+    c.add(this.add.text(-(W - 80) / 2 + 26, -26, name, {
+      fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: owned ? '#e8c874' : '#f5f0e6'
+    }).setOrigin(0, 0.5).setResolution(2));
+    c.add(this.add.text(-(W - 80) / 2 + 26, 14, desc, {
+      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#9a8fb8', wordWrap: { width: W - 320 }
+    }).setOrigin(0, 0.5).setResolution(2));
+    const btnX = (W - 80) / 2 - 100;
+    if (owned) {
+      const b = this.add.rectangle(btnX, 0, 150, 52, 0xe8c874).setStrokeStyle(2, 0xa8842a, 1);
+      c.add(b);
+      c.add(this.add.text(btnX, 0, '✓ АКТИВНО', { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(2));
+    } else {
+      const b = this.add.rectangle(btnX, 0, 150, 52, 0x241a3a).setStrokeStyle(2, 0xd4af37, 1).setInteractive({ useHandCursor: true });
+      c.add(b);
+      c.add(Core.coinLabel(this, btnX, 0, cost, { fontSize: 17, iconSize: 19, anchor: 'center' }));
+      b.on('pointerover', () => b.setAlpha(0.85));
+      b.on('pointerout', () => b.setAlpha(1));
+      b.on('pointerdown', () => this.buyUpgrade(key, cost));
+    }
+    this.content.add(c);
+  }
+
+  buyUpgrade(key, cost) {
+    const coins = Core.SDK.get('coins', 0);
+    if (coins < cost) { this.showToast('Не хватает монет'); return; }
+    const up = Core.SDK.get('upgrades', {});
+    if (up[key]) { this.showToast('Уже активно'); return; }
+    up[key] = true;
+    Core.SDK.save({ coins: coins - cost, upgrades: up });
+    Core.Audio.buy();
+    this.showToast('Улучшение куплено');
+    this.scene.restart();
+  }
+
+  renderSkins() {
+    this.skinContainer = this.content;
+    const W = this.scale.width;
+    this.tubeTab = this.makeSubTab(W / 2 - 90, 210, 'ТРУБЫ', 'tubes');
+    this.ballTab = this.makeSubTab(W / 2 + 90, 210, 'ШАРЫ', 'balls');
+    this.content.add([this.tubeTab.bg, this.tubeTab.lbl, this.ballTab.bg, this.ballTab.lbl]);
+    this.updateSubTabs();
+    const startY = 280, rowH = 115;
     if (this.skinTab === 'tubes') {
       const owned = Core.SDK.get('ownedSkins', ['classic']);
       const current = Core.SDK.get('currentSkin', 'classic');
-      Object.keys(Core.Skins.tubes).forEach((key, idx) => {
-        this.createSkinRow(key, Core.Skins.tubes[key], owned, current, startY + idx * rowH, rowH - 15);
-      });
+      Object.keys(Core.Skins.tubes).forEach((k, i) => this.createSkinRow(k, Core.Skins.tubes[k], owned, current, startY + i * rowH, rowH - 12));
     } else {
       const owned = Core.SDK.get('ownedBallSkins', ['classic']);
       const current = Core.SDK.get('currentBallSkin', 'classic');
-      Object.keys(Core.Skins.balls).forEach((key, idx) => {
-        this.createBallSkinRow(key, Core.Skins.balls[key], owned, current, startY + idx * rowH, rowH - 15);
-      });
+      Object.keys(Core.Skins.balls).forEach((k, i) => this.createBallSkinRow(k, Core.Skins.balls[k], owned, current, startY + i * rowH, rowH - 12));
     }
-  }
-  createBallSkinRow(key, skin, owned, current, y, height) {
-    const W = this.scale.width;
-    const c = this.add.container(W / 2, y);
-    const isOwned = owned.indexOf(key) >= 0;
-    const isCurrent = current === key;
-    const bg = this.add.rectangle(0, 0, W - 60, height, 0x2a2a4a).setOrigin(0.5)
-      .setStrokeStyle(2, isCurrent ? 0x4ecca3 : 0x444455, isCurrent ? 1 : 0.5);
-    c.add(bg);
-    const preview = Core.renderBall(this, 34, 0x3498db, key);
-    preview.setPosition(-W / 2 + 80, 0);
-    c.add(preview);
-    c.add(this.add.text(-W / 2 + 140, -15, skin.name, {
-      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ffffff'
-    }).setOrigin(0, 0.5));
-    c.add(this.add.text(-W / 2 + 140, 15, isOwned ? 'Куплено' : 'Не куплено', Core.TextStyles.soft(12, '#888888')).setOrigin(0, 0.5));
-    const btnBg = this.add.rectangle(W / 2 - 100, 0, 160, 54, isCurrent ? 0x1f3a2f : (isOwned ? 0x2a2a4a : 0xffd93d)).setOrigin(0.5)
-      .setStrokeStyle(2, isCurrent || isOwned ? 0x4ecca3 : 0xb8860b, 0.8);
-    c.add(btnBg);
-    if (isCurrent) {
-      c.add(this.add.text(W / 2 - 100, 0, '✓ ВЫБРАН', { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: '#4ecca3' }).setOrigin(0.5));
-    } else if (isOwned) {
-      c.add(this.add.text(W / 2 - 100, 0, 'Выбрать', { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
-      btnBg.setInteractive({ useHandCursor: true });
-      btnBg.on('pointerdown', () => this.selectBallSkin(key));
-    } else {
-      c.add(Core.coinLabel(this, W / 2 - 100, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
-      btnBg.setInteractive({ useHandCursor: true });
-      btnBg.on('pointerdown', () => this.buyBallSkin(key, skin.price));
-    }
-    this.skinContainer.add(c);
-  }
-  async buyBallSkin(key, price) {
-    const coins = Core.SDK.get('coins', 0);
-    if (coins < price) { this.showToast('Не хватает монет'); return; }
-    const owned = Core.SDK.get('ownedBallSkins', ['classic']).slice();
-    owned.push(key);
-    await Core.SDK.save({ coins: coins - price, ownedBallSkins: owned, currentBallSkin: key });
-    Core.Audio.buy(); this.showToast('Куплено: ' + Core.Skins.balls[key].name);
-    if (owned.length >= 4 && Core.SDK.get('ownedSkins', []).length >= 4) {
-      if (Core.Achievements.unlock('all_skins')) Core.showAchievement(this, 'all_skins');
-    }
-    this.scene.restart();
-  }
-  async selectBallSkin(key) {
-    await Core.SDK.save({ currentBallSkin: key });
-    Core.Audio.select();
-    this.scene.restart();
   }
 
-  createItemCard(x, y, icon, label, price, onClick, badge) {
-    const c = this.add.container(x, y);
-    const bg = this.add.rectangle(0, 0, 170, 130, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, 0x4ecca3, 0.7);
-    c.add(bg);
-    c.add(this.add.text(0, -35, icon, { fontSize: '36px' }).setOrigin(0.5));
-    c.add(this.add.text(0, 5, label, {
-      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '800', color: '#ffffff',
-      align: 'center', wordWrap: { width: 160 }
-    }).setOrigin(0.5));
-    c.add(Core.coinLabel(this, 0, 42, price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
-    if (badge) {
-      const b = this.add.rectangle(60, -55, 70, 22, 0xe74c3c).setOrigin(0.5);
-      c.add(b);
-      c.add(this.add.text(60, -55, badge, { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '900', color: '#ffffff' }).setOrigin(0.5));
-    }
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => bg.setFillStyle(0x3a3a5a));
-    bg.on('pointerout',  () => bg.setFillStyle(0x2a2a4a));
-    bg.on('pointerdown', () => { this.tweens.add({ targets: c, scale: 0.95, duration: 80, yoyo: true }); onClick(); });
+  makeSubTab(x, y, text, key) {
+    const bg = this.add.rectangle(x, y, 160, 44, 0x1c1628).setStrokeStyle(2, 0x4a4460, 0.7).setInteractive({ useHandCursor: true });
+    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2);
+    bg.on('pointerdown', () => { Core.Audio.select(); this.setSkinTab(key); });
+    return { bg, lbl };
   }
+
+  updateSubTabs() {
+    const set = (t, on) => { t.bg.setFillStyle(on ? 0x7c5cff : 0x1c1628); t.bg.setStrokeStyle(2, on ? 0xe8c874 : 0x4a4460, on ? 1 : 0.7); t.lbl.setColor(on ? '#f5f0e6' : '#9a8fb8'); };
+    set(this.tubeTab, this.skinTab === 'tubes');
+    set(this.ballTab, this.skinTab === 'balls');
+  }
+
+  setSkinTab(tab) {
+    this.skinTab = tab; Core._skinTab = tab;
+    this.content.removeAll(true);
+    this.renderSkins();
+  }
+
   createSkinRow(key, skin, owned, current, y, height) {
     const W = this.scale.width;
     const c = this.add.container(W / 2, y);
-    const isOwned = owned.indexOf(key) >= 0;
+    const exclusive = !!skin.exclusive;
+    const testUnlock = exclusive && !!Core.TEST_OBSIDIAN;
+    const isOwned = owned.indexOf(key) >= 0 || testUnlock;
     const isCurrent = current === key;
-    const bg = this.add.rectangle(0, 0, W - 60, height, 0x2a2a4a).setOrigin(0.5).setStrokeStyle(2, isCurrent ? 0x4ecca3 : 0x444455, isCurrent ? 1 : 0.5);
+    const bg = this.add.rectangle(0, 0, W - 60, height, 0x1c1628).setOrigin(0.5)
+      .setStrokeStyle(2, isCurrent ? 0xd4af37 : (exclusive ? 0x7c5cff : 0x4a4460), isCurrent ? 1 : 0.65);
     c.add(bg);
     const g = this.add.graphics();
-    const tx = -W / 2 + 80, ty = 0, tw = 40, th = 90, r = 10;
+    const tx = -W / 2 + 80, ty = 0, tw = 40, th = 80, r = 10;
     const x0 = tx - tw / 2, y0 = ty - th / 2;
     g.fillStyle(skin.fill, skin.fillAlpha);
     g.lineStyle(skin.lineWidth, skin.stroke, skin.strokeAlpha);
@@ -1372,63 +2011,277 @@ class ShopScene extends Phaser.Scene {
     g.closePath();
     g.strokePath(); g.fillPath();
     c.add(g);
-    c.add(this.add.text(-W / 2 + 140, -15, skin.name, {
-      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#ffffff'
-    }).setOrigin(0, 0.5));
-    c.add(this.add.text(-W / 2 + 140, 15, isOwned ? 'Куплено' : 'Не куплено', Core.TextStyles.soft(12, '#888888')).setOrigin(0, 0.5));
-    let statusText = null, statusColor = '#ffd93d', clickFn = null;
-    if (isCurrent) { statusText = '✓ ВЫБРАН'; statusColor = '#4ecca3'; }
-    else if (isOwned) { statusText = 'Выбрать'; statusColor = '#ffffff'; clickFn = () => this.selectSkin(key); }
-    else { clickFn = () => this.buySkin(key, skin.price); }
-    const btnBg = this.add.rectangle(W / 2 - 100, 0, 160, 54, isCurrent ? 0x1f3a2f : (isOwned ? 0x2a2a4a : 0xffd93d)).setOrigin(0.5);
-    btnBg.setStrokeStyle(2, isCurrent ? 0x4ecca3 : (isOwned ? 0x4ecca3 : 0xb8860b), 0.8);
-    c.add(btnBg);
-    if (statusText) {
-      c.add(this.add.text(W / 2 - 100, 0, statusText, {
-        fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: statusColor
-      }).setOrigin(0.5));
-    } else {
-      c.add(Core.coinLabel(this, W / 2 - 100, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
+    c.add(this.add.text(-W / 2 + 140, -18, skin.name, { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+    const hasPerk = skin.perk && Object.keys(skin.perk).length > 0;
+    const sub = skin.perkDesc || 'Базовый стиль';
+    c.add(this.add.text(-W / 2 + 140, 14, sub, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(2));
+    if (exclusive) {
+      c.add(this.add.text(-W / 2 + 140, 36, testUnlock ? 'ТЕСТОВЫЙ ДОСТУП' : 'Награда за ЗОЛОТО месяца', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0, 0.5).setResolution(2));
     }
+    const btnX = W / 2 - 120, btnW = 165, btnH = 54;
+    let fill, border, label = '', labelColor = '#f5f0e6', clickFn = null, showPrice = false;
+    if (isCurrent) { fill = 0xe8c874; border = 0xa8842a; label = '✓ АКТИВЕН'; labelColor = '#0a0a10'; }
+    else if (isOwned) { fill = 0x7c5cff; border = 0xe8c874; label = 'НАДЕТЬ'; clickFn = () => this.selectSkin(key); }
+    else if (exclusive) { fill = 0x241a3a; border = 0x7c5cff; label = '🔒 НАГРАДА'; labelColor = '#e8c874'; clickFn = () => this.showToast('Открой в архиве вызовов: ЗОЛОТО месяца'); }
+    else { fill = 0x241a3a; border = 0xd4af37; showPrice = true; clickFn = () => this.buySkin(key, skin.price); }
+    const shadow = this.add.rectangle(btnX, 4, btnW, btnH, 0x000000, 0.4).setOrigin(0.5);
+    const btnBg = this.add.rectangle(btnX, 0, btnW, btnH, fill).setOrigin(0.5).setStrokeStyle(2, border, 1);
+    c.add([shadow, btnBg]);
+    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
+    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(2));
     if (clickFn) {
       btnBg.setInteractive({ useHandCursor: true });
-      btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
-      btnBg.on('pointerout',  () => btnBg.setAlpha(1));
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.88));
+      btnBg.on('pointerout', () => btnBg.setAlpha(1));
       btnBg.on('pointerdown', clickFn);
     }
     this.skinContainer.add(c);
   }
-  async buyHint(count, price) {
+
+  createBallSkinRow(key, skin, owned, current, y, height) {
+    const W = this.scale.width;
+    const c = this.add.container(W / 2, y);
+    const isOwned = owned.indexOf(key) >= 0;
+    const isCurrent = current === key;
+    const bg = this.add.rectangle(0, 0, W - 60, height, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, isCurrent ? 0xd4af37 : 0x4a4460, isCurrent ? 1 : 0.65);
+    c.add(bg);
+    const preview = Core.renderBall(this, 32, 0x4a90e2, key);
+    preview.setPosition(-W / 2 + 80, 0);
+    c.add(preview);
+    c.add(this.add.text(-W / 2 + 140, -18, skin.name, { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+    const hasPerk = skin.perk && Object.keys(skin.perk).length > 0;
+    c.add(this.add.text(-W / 2 + 140, 14, skin.perkDesc || 'Базовый стиль', { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(2));
+    const btnX = W / 2 - 120, btnW = 165, btnH = 54;
+    let fill, border, label = '', labelColor = '#f5f0e6', clickFn = null, showPrice = false;
+    if (isCurrent) { fill = 0xe8c874; border = 0xa8842a; label = '✓ АКТИВЕН'; labelColor = '#0a0a10'; }
+    else if (isOwned) { fill = 0x7c5cff; border = 0xe8c874; label = 'НАДЕТЬ'; clickFn = () => this.selectBallSkin(key); }
+    else { fill = 0x241a3a; border = 0xd4af37; showPrice = true; clickFn = () => this.buyBallSkin(key, skin.price); }
+    const shadow = this.add.rectangle(btnX, 4, btnW, btnH, 0x000000, 0.4).setOrigin(0.5);
+    const btnBg = this.add.rectangle(btnX, 0, btnW, btnH, fill).setOrigin(0.5).setStrokeStyle(2, border, 1);
+    c.add([shadow, btnBg]);
+    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
+    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(2));
+    if (clickFn) {
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.88));
+      btnBg.on('pointerout', () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown', clickFn);
+    }
+    this.skinContainer.add(c);
+  }
+
+  buyHint(count, price) {
     const coins = Core.SDK.get('coins', 0);
     if (coins < price) { this.showToast('Не хватает монет'); return; }
-    await Core.SDK.save({ coins: coins - price, hintsOwned: Core.SDK.get('hintsOwned', 3) + count });
-    Core.Audio.buy(); this.showToast('+' + count + ' подсказок!');
-    this.coinLabel.__setAmount(Core.SDK.get('coins', 0));
+    Core.SDK.save({ coins: coins - price, hintsOwned: Core.SDK.get('hintsOwned', 0) + count });
+    Core.Audio.buy();
+    this.showToast('+' + count + ' подсказок');
+    this.scene.restart();
   }
-  async buySkin(key, price) {
+
+  buySkin(key, price) {
     const coins = Core.SDK.get('coins', 0);
     if (coins < price) { this.showToast('Не хватает монет'); return; }
     const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
-    owned.push(key);
-    await Core.SDK.save({ coins: coins - price, ownedSkins: owned, currentSkin: key });
-    Core.Audio.buy(); this.showToast('Куплено: ' + Core.Skins.tubes[key].name);
-    if (owned.length >= 4) {
-      if (Core.Achievements.unlock('all_skins')) Core.showAchievement(this, 'all_skins');
-    }
+    if (owned.indexOf(key) < 0) owned.push(key);
+    Core.SDK.save({ coins: coins - price, ownedSkins: owned, currentSkin: key });
+    Core.Audio.buy();
+    this.showToast('Куплено: ' + Core.Skins.tubes[key].name);
     this.scene.restart();
   }
-  async selectSkin(key) {
-    await Core.SDK.save({ currentSkin: key });
+
+  selectSkin(key) {
+    const patch = { currentSkin: key };
+    const skin = Core.Skins.tubes[key];
+    if (skin && skin.exclusive && Core.TEST_OBSIDIAN) {
+      const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
+      if (owned.indexOf(key) < 0) owned.push(key);
+      patch.ownedSkins = owned;
+    }
+    Core.SDK.save(patch);
     Core.Audio.select();
     this.scene.restart();
   }
+
+  buyBallSkin(key, price) {
+    const coins = Core.SDK.get('coins', 0);
+    if (coins < price) { this.showToast('Не хватает монет'); return; }
+    const owned = Core.SDK.get('ownedBallSkins', ['classic']).slice();
+    if (owned.indexOf(key) < 0) owned.push(key);
+    Core.SDK.save({ coins: coins - price, ownedBallSkins: owned, currentBallSkin: key });
+    Core.Audio.buy();
+    this.showToast('Куплено: ' + Core.Skins.balls[key].name);
+    this.scene.restart();
+  }
+
+  selectBallSkin(key) {
+    Core.SDK.save({ currentBallSkin: key });
+    Core.Audio.select();
+    this.scene.restart();
+  }
+
   showToast(msg) {
     const W = this.scale.width, H = this.scale.height;
-    const t = this.add.text(W / 2, H - 120, msg, {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '800', color: '#ffffff',
+    const t = this.add.text(W / 2, H - 70, msg, {
+      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6',
       backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
-    }).setOrigin(0.5).setDepth(1000);
-    this.tweens.add({ targets: t, alpha: 0, y: H - 150, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+    }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    this.tweens.add({ targets: t, alpha: 0, y: H - 100, duration: 1400, delay: 900, onComplete: () => t.destroy() });
+  }
+}
+
+class DailyArchiveScene extends Phaser.Scene {
+  constructor() { super('DailyArchive'); }
+
+  init() {
+    this.seasonStart = 202611;
+    this.monthKey = Math.max(pfTodayMonthKey(), this.seasonStart);
+  }
+
+  seasonNum(mk) { const y = Math.floor(mk / 100), m = mk % 100; return (y - 2026) * 12 + (m - 11) + 1; }
+
+  claimedTiers() {
+    const rewards = Core.SDK.get('monthlyRewards', {});
+    const rec = rewards[this.monthKey];
+    if (!rec) return [];
+    if (rec.claimed) return rec.claimed;
+    return rec.tier ? [String(rec.tier).toLowerCase()] : [];
+  }
+
+  create() {
+    const W = this.scale.width, H = this.scale.height;
+    this.cameras.main.setBackgroundColor('#0a0a10');
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
+    bg.fillRect(0, 0, W, H);
+    Core.Juice.ambient(this, 10, -1);
+
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.scene.start('Menu'));
+    this.add.text(W / 2, 45, 'АРХИВ ВЫЗОВОВ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2);
+    this.trophyText = this.add.text(W - 20, 45, '🏆 0', { fontFamily: Core.FONT, fontSize: '22px', fontStyle: '400', color: '#e8c874' }).setOrigin(1, 0.5).setResolution(2);
+
+    this.prevBtn = this.add.text(W / 2 - 215, 108, '‹', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.monthText = this.add.text(W / 2, 108, '', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2);
+    this.nextBtn = this.add.text(W / 2 + 215, 108, '›', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.prevBtn.on('pointerdown', () => this.changeMonth(-1));
+    this.nextBtn.on('pointerdown', () => this.changeMonth(1));
+
+    this.progressText = this.add.text(W / 2, 158, '', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setResolution(2);
+    this.progressContainer = this.add.container(0, 0);
+    this.gridContainer = this.add.container(0, 0);
+
+    this.add.text(W / 2, H - 34, '★ пройдено · фиолетовый — доступно · 🔒 будущее', { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#6f6785' }).setOrigin(0.5).setResolution(2);
+
+    this.renderMonth();
+    this.cameras.main.fadeIn(240, 0, 0, 0);
+  }
+
+  changeMonth(delta) {
+    let y = Math.floor(this.monthKey / 100), m = this.monthKey % 100;
+    m += delta;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    const mk = y * 100 + m;
+    if (mk < this.seasonStart || mk > pfTodayMonthKey()) return;
+    this.monthKey = mk;
+    this.renderMonth();
+  }
+
+  renderMonth() {
+    const W = this.scale.width;
+    const gained = Core.autoClaimMonthly(this.monthKey);
+    if (gained.length) this.showToast('Награда: ' + gained.map(t => t.label).join(' · '));
+
+    const stars = pfMonthStars(this.monthKey);
+    const hist = Core.SDK.get('dailyHistory', {});
+    const rewards = Core.SDK.get('monthlyRewards', {});
+    const claimed = this.claimedTiers();
+    let goldMonths = 0;
+    Object.keys(rewards).forEach(k => { const r = rewards[k]; const cl = r.claimed || (r.tier ? [String(r.tier).toLowerCase()] : []); if (cl.indexOf('gold') >= 0) goldMonths++; });
+    this.trophyText.setText('🏆 ' + goldMonths);
+    this.monthText.setText('СЕЗОН ' + this.seasonNum(this.monthKey) + ' · ' + pfMonthLabel(this.monthKey));
+    this.progressText.setText('★ ' + stars + ' / 90');
+    this.prevBtn.setAlpha(this.monthKey <= this.seasonStart ? 0.3 : 1);
+    this.nextBtn.setAlpha(this.monthKey >= pfTodayMonthKey() ? 0.3 : 1);
+
+    this.progressContainer.removeAll(true);
+    const barW = 520, barH = 12, barX = (W - barW) / 2, barY = 198;
+    this.progressContainer.add(this.add.rectangle(W / 2, barY, barW, barH, 0x0a0a10).setStrokeStyle(1, 0x3a3450, 0.9));
+    const fillW = Math.min(1, stars / 90) * barW;
+    if (fillW > 0) this.progressContainer.add(this.add.rectangle(barX + fillW / 2, barY, fillW, barH, 0xe8c874));
+    [{ key: 'bronze', need: 30, color: 0xcd7f32 }, { key: 'silver', need: 60, color: 0xc0c0c0 }, { key: 'gold', need: 90, color: 0xe8c874 }].forEach(t => {
+      const mx = barX + (t.need / 90) * barW;
+      const reached = stars >= t.need;
+      const isClaimed = claimed.indexOf(t.key) >= 0;
+      this.progressContainer.add(this.add.circle(mx, barY, 9, isClaimed || reached ? t.color : 0x241a3a).setStrokeStyle(2, isClaimed ? 0xf5f0e6 : (reached ? t.color : 0x3a3450), 1));
+      if (isClaimed) this.progressContainer.add(this.add.text(mx, barY, '✓', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5));
+      this.progressContainer.add(this.add.text(mx, barY + 24, t.need + '★', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: reached ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(2));
+    });
+
+    this.gridContainer.removeAll(true);
+    const y = Math.floor(this.monthKey / 100), m = this.monthKey % 100;
+    const days = pfDaysInMonth(this.monthKey);
+    const firstWeekday = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+    const cellW = 88, cellH = 96, gap = 8;
+    const totalW = 7 * cellW + 6 * gap;
+    const startX = (W - totalW) / 2 + cellW / 2;
+    const headerY = 268, gridY = 318;
+    const names = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+    for (let col = 0; col < 7; col++) {
+      this.gridContainer.add(this.add.text(startX + col * (cellW + gap), headerY, names[col], {
+        fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: col >= 5 ? '#e8c874' : '#6f6785'
+      }).setOrigin(0.5).setResolution(2));
+    }
+    const today = todayStr();
+    const totalCells = firstWeekday + days;
+    for (let i = 0; i < totalCells; i++) {
+      const col = i % 7, row = Math.floor(i / 7);
+      const x = startX + col * (cellW + gap), cy = gridY + row * (cellH + gap);
+      if (i < firstWeekday) {
+        this.gridContainer.add(this.add.rectangle(x, cy, cellW, cellH, 0x14101f, 0.35).setStrokeStyle(1, 0x241a3a, 0.4));
+        continue;
+      }
+      const day = i - firstWeekday + 1;
+      const dateKey = this.monthKey * 100 + day;
+      const rec = hist[dateKey];
+      const future = dateKey > today;
+      const isToday = dateKey === today;
+      const done = !!rec;
+      const c = this.add.container(x, cy);
+      let fill = 0x1c1628, border = 0x7c5cff, borderAlpha = 0.45, numColor = '#c9c2d8';
+      if (done) { border = 0xe8c874; borderAlpha = 0.95; numColor = '#f5f0e6'; }
+      else if (isToday) { border = 0x7c5cff; borderAlpha = 1; numColor = '#e8c874'; }
+      else if (future) { fill = 0x14101f; border = 0x3a3450; borderAlpha = 0.3; numColor = '#4a4460'; }
+      const bg = this.add.rectangle(0, 0, cellW, cellH, fill).setStrokeStyle(2, border, borderAlpha);
+      c.add(bg);
+      c.add(this.add.text(0, -32, String(day), { fontFamily: Core.FONT, fontSize: '23px', fontStyle: '400', color: numColor }).setOrigin(0.5).setResolution(2));
+      if (done) {
+        const bs = rec.bestStars || 0;
+        c.add(this.add.text(0, -4, '★'.repeat(bs) + '☆'.repeat(3 - bs), { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
+        c.add(this.add.text(0, 24, String(rec.bestScore || 0), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2));
+      } else if (future) {
+        c.add(this.add.text(0, 6, '🔒', { fontSize: '20px' }).setOrigin(0.5).setAlpha(0.4));
+      } else if (isToday) {
+        c.add(this.add.text(0, 6, 'СЕГОДНЯ', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setResolution(2));
+        this.tweens.add({ targets: bg, alpha: 0.65, duration: 850, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      } else {
+        c.add(this.add.text(0, 6, '▶', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setAlpha(0.75).setResolution(2));
+      }
+      if (!future) {
+        bg.setInteractive({ useHandCursor: true });
+        bg.on('pointerover', () => { bg.setFillStyle(0x2a2138); c.setScale(1.05); });
+        bg.on('pointerout', () => { bg.setFillStyle(fill); c.setScale(1); });
+        bg.on('pointerdown', () => { Core.Audio.select(); this.scene.start('BallSort', { mode: 'daily', level: 0, seed: dateKey, dailyDate: dateKey }); });
+      }
+      this.gridContainer.add(c);
+    }
+  }
+
+  showToast(msg) {
+    const W = this.scale.width, H = this.scale.height;
+    const t = this.add.text(W / 2, H - 70, msg, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', backgroundColor: '#000000cc', padding: { x: 16, y: 10 } }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    this.tweens.add({ targets: t, alpha: 0, y: H - 100, duration: 1400, delay: 900, onComplete: () => t.destroy() });
   }
 }
 
@@ -1462,32 +2315,82 @@ const Logic = {
   }
 };
 
-function isSolvable(tubes, maxDepth) {
-  const start = Date.now(), memo = new Map();
-  function keyOf(t) { return t.map(function (x) { return x.join(','); }).join('|'); }
-  function dfs(t, depth) {
-    if (Date.now() - start > 350) return -1;
-    if (depth < 0) return -1;
-    const k = keyOf(t);
-    if (memo.has(k)) return memo.get(k);
-    if (Logic.isSolved(t)) { memo.set(k, 0); return 0; }
-    let best = -1;
-    for (let a = 0; a < t.length; a++) {
-      for (let b = 0; b < t.length; b++) {
-        if (!Logic.canPour(t, a, b)) continue;
-        if (t[b].length === 0 && Logic.isUniform(t[a])) continue;
-        const n = Logic.clone(t);
-        Logic.applyPour(n, a, b);
-        const r = dfs(n, depth - 1);
-        if (r >= 0 && (best === -1 || r + 1 < best)) best = r + 1;
-        if (best === 1) break;
+
+Core.Solver = {
+  key: function (t) {
+    return t.map(function (x) { return x.join(','); }).sort().join('|');
+  },
+  shortest: function (tubes, cap) {
+    cap = cap || 12000;
+    const start = Logic.clone(tubes);
+    const queue = [{ t: start, d: 0 }];
+    const seen = new Set([this.key(start)]);
+    let head = 0;
+    while (head < queue.length) {
+      const cur = queue[head++];
+      if (Logic.isSolved(cur.t)) return { status: 'SOLVED', moves: cur.d };
+      if (seen.size >= cap) break;
+      for (let a = 0; a < cur.t.length; a++) {
+        if (cur.t[a].length === 0 || Logic.isUniform(cur.t[a])) continue;
+        for (let b = 0; b < cur.t.length; b++) {
+          if (!Logic.canPour(cur.t, a, b)) continue;
+          if (cur.t[b].length === 0) {
+            let firstEmpty = -1;
+            for (let e = 0; e < cur.t.length; e++) if (cur.t[e].length === 0) { firstEmpty = e; break; }
+            if (b !== firstEmpty) continue;
+          }
+          const next = Logic.clone(cur.t);
+          Logic.applyPour(next, a, b);
+          const k = this.key(next);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          queue.push({ t: next, d: cur.d + 1 });
+        }
       }
-      if (best === 1) break;
     }
-    memo.set(k, best);
-    return best;
+    return { status: seen.size >= cap ? 'UNKNOWN' : 'UNSOLVABLE', moves: null };
+  },
+  estimate: function (tubes, colors) {
+    let runs = 0;
+    tubes.forEach(function (t) {
+      for (let i = 0; i < t.length; i++) if (i === 0 || t[i] !== t[i - 1]) runs++;
+    });
+    const base = Math.max(colors * 2, runs - colors);
+    return Math.ceil(base * 1.7) + colors + 2;
+  },
+  parFor: function (tubes, colors) {
+    const r = this.shortest(tubes, 12000);
+    return r.status === 'SOLVED' ? r.moves : this.estimate(tubes, colors);
   }
-  return dfs(tubes, maxDepth) >= 0;
+};
+
+function isSolvable(tubes, maxDepth) {
+  const start = Date.now();
+  const queue = [Logic.clone(tubes)];
+  const visited = new Set();
+  
+  function keyOf(t) { return t.map(x => x.join(',')).join('|'); }
+  
+  while (queue.length > 0) {
+    if (Date.now() - start > 400) return true; 
+    const current = queue.shift();
+    if (Logic.isSolved(current)) return true;
+    const k = keyOf(current);
+    if (visited.has(k)) continue;
+    visited.add(k);
+    if (visited.size > 2000) return true; 
+
+    for (let a = 0; a < current.length; a++) {
+      for (let b = 0; b < current.length; b++) {
+        if (!Logic.canPour(current, a, b)) continue;
+        if (current[b].length === 0 && Logic.isUniform(current[a])) continue;
+        const next = Logic.clone(current);
+        Logic.applyPour(next, a, b);
+        queue.push(next);
+      }
+    }
+  }
+  return false;
 }
 
 function generateLevel(level, seed) {
@@ -1503,7 +2406,7 @@ function generateLevel(level, seed) {
     else if (level <= 30) colors = 7;
     else colors = Math.min(9, 7 + Math.floor((level - 30) / 15));
   }
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 15; attempt++) {
     const balls = [];
     for (let c = 0; c < colors; c++) for (let i = 0; i < MAX_TUBE; i++) balls.push(c);
     Core.Utils.shuffleWith(balls, rng);
@@ -1515,10 +2418,17 @@ function generateLevel(level, seed) {
   }
   const balls = [];
   for (let c = 0; c < colors; c++) for (let i = 0; i < MAX_TUBE; i++) balls.push(c);
-  Core.Utils.shuffleWith(balls, rng);
   const tubes = [];
   for (let i = 0; i < colors; i++) tubes.push(balls.slice(i * MAX_TUBE, (i + 1) * MAX_TUBE));
   tubes.push([]); tubes.push([]);
+  
+  for(let k=0; k<20; k++) {
+     const from = Math.floor(rng() * tubes.length);
+     const to = Math.floor(rng() * tubes.length);
+     if(from !== to && tubes[from].length > 0 && tubes[to].length < MAX_TUBE) {
+         tubes[to].push(tubes[from].pop());
+     }
+  }
   return { tubes: tubes, colors: colors };
 }
 
@@ -1529,13 +2439,16 @@ class BallSortScene extends BaseGameScene {
     const data = this.isDaily ? generateLevel(0, this.seed) : generateLevel(level);
     this.tubes = data.tubes;
     this.colors = data.colors;
+    this.parMoves = data.parMoves || Core.Solver.parFor(this.tubes, this.colors);
     this.layoutTubes();
     this.renderTubes();
+    this.updateMoves();
   }
   resetState() {
     this.selected = -1;
     this.undoStack = [];
     this.animating = false;
+    this.shuffleCount = 0;
     this.doneTubes = new Set();
     this.bonusAwarded = new Set();
     this.doneGlows = {};
@@ -1569,7 +2482,8 @@ class BallSortScene extends BaseGameScene {
       const objs = [this.tubeGfx[i]].concat(this.ballGfx[i]);
       objs.forEach(function (o) { o.setAlpha(0); o.y = o.y + 60; });
       this.tweens.add({ targets: objs, alpha: 1, y: '-=60', duration: 420, delay: i * 55, ease: 'Back.Out' });
-      const zone = this.add.zone(g.x, g.y, g.w + 20, g.h + 20).setInteractive({ useHandCursor: true });
+      
+      const zone = this.add.zone(g.x, g.y, g.w + 40, g.h + 40).setInteractive({ useHandCursor: true });
       zone.on('pointerdown', () => this.onTubeClick(i));
       this.zones.push(zone);
     }
@@ -1601,7 +2515,7 @@ class BallSortScene extends BaseGameScene {
   createSelectionGlow(i) {
     if (this.selectedGlow) this.selectedGlow.destroy();
     const g = this.tubeGeom[i];
-    const glow = this.add.rectangle(g.x, g.y, g.w + 24, g.h + 24, 0x4ecca3, 0.12).setStrokeStyle(3, 0x4ecca3, 0.9).setDepth(-2);
+    const glow = this.add.rectangle(g.x, g.y, g.w + 24, g.h + 24, 0xd4af37, 0.12).setStrokeStyle(3, 0xd4af37, 0.9).setDepth(-2);
     this.tweens.add({ targets: glow, alpha: 0.03, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.selectedGlow = glow;
   }
@@ -1629,7 +2543,7 @@ class BallSortScene extends BaseGameScene {
       this.drawTube(i, true); this.liftTop(i, true);
       this.createSelectionGlow(i);
       const g = this.tubeGeom[i];
-      Core.Juice.ring(this, g.x, g.y, 0x4ecca3, 20, g.w * 0.9, 400);
+      Core.Juice.ring(this, g.x, g.y, 0xd4af37, 20, g.w * 0.9, 400);
       Core.Audio.select();
     } else if (this.selected === i) {
       this.drawTube(i, false); this.liftTop(i, false); this.selected = -1;
@@ -1684,8 +2598,8 @@ class BallSortScene extends BaseGameScene {
     const color = Core.PALETTE[this.tubes[i][0] % Core.PALETTE.length];
     const glow = this.add.graphics().setDepth(-1);
     const x0 = g.x - g.w / 2 - 6, y0 = g.y - g.h / 2 - 6, r = 16;
-    glow.fillStyle(0xffd93d, 0.10);
-    glow.lineStyle(4, 0xffd93d, 1);
+    glow.fillStyle(0xe8c874, 0.10);
+    glow.lineStyle(4, 0xe8c874, 1);
     glow.beginPath();
     glow.moveTo(x0, y0);
     glow.lineTo(x0, y0 + g.h + 12 - r);
@@ -1696,20 +2610,20 @@ class BallSortScene extends BaseGameScene {
     glow.closePath(); glow.strokePath(); glow.fillPath();
     this.doneGlows[i] = glow;
     this.tweens.add({ targets: glow, alpha: 0.4, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-    Core.Juice.burst(this, g.x, g.y - g.h * 0.15, 0xffd93d, 32, 200);
+    Core.Juice.burst(this, g.x, g.y - g.h * 0.15, 0xe8c874, 32, 200);
     Core.Juice.burst(this, g.x, g.y - g.h * 0.15, color, 24, 180);
     const ring = this.add.circle(g.x, g.y, 20, 0xffffff, 0.85).setDepth(940);
     this.tweens.add({ targets: ring, scale: 7, alpha: 0, duration: 550, ease: 'Cubic.Out', onComplete: () => ring.destroy() });
-    Core.Juice.ring(this, g.x, g.y, 0xffd93d, 40, 140, 500);
-    Core.Juice.screenFlash(this, 0xffd93d, 0.22, 280);
+    Core.Juice.ring(this, g.x, g.y, 0xe8c874, 40, 140, 500);
+    Core.Juice.screenFlash(this, 0xe8c874, 0.22, 280);
     this.tweens.add({ targets: this.cameras.main, zoom: 1.02, duration: 130, yoyo: true, ease: 'Sine.InOut' });
     Core.Juice.vibrate([30, 30, 30]);
     Core.Audio.tubeComplete();
     if (!this.bonusAwarded.has(i)) {
       this.bonusAwarded.add(i);
-      this.addScore(50, i, { color: '#ffd93d', size: 34 });
+      this.addScore(50, i, { color: '#e8c874', size: 34 });
       const label = this.add.text(g.x, g.y - g.h / 2 - 32, '★ +50', {
-        fontFamily: Core.FONT, fontSize: '36px', fontStyle: '900', color: '#ffd93d',
+        fontFamily: Core.FONT, fontSize: '46.8px', fontStyle: '900', color: '#e8c874',
         stroke: '#000000', strokeThickness: 5
       }).setOrigin(0.5).setDepth(1500).setScale(0);
       this.tweens.add({ targets: label, scale: 1, duration: 350, ease: 'Back.Out' });
@@ -1740,8 +2654,7 @@ class BallSortScene extends BaseGameScene {
         targets: ball, x: target.x, y: target.y, duration: 280, delay: k * 80, ease: 'Cubic.Out',
         onComplete: function () {
           trail.remove();
-          self.tweens.add({ targets: ball, scale: 1.24, duration: 90, yoyo: true, ease: 'Quad.Out' });
-          self.tweens.add({ targets: ball, scale: 1.0, duration: 160, delay: 90, ease: 'Back.Out' });
+          self.tweens.add({ targets: ball, scaleX: 1.2, scaleY: 0.8, duration: 100, yoyo: true, ease: 'Quad.Out' });
           Core.Juice.flash(self, target.x, target.y, 26);
           Core.Juice.ring(self, target.x, target.y, 0xffffff, 26, 46, 250);
           Core.Audio.drop();
@@ -1796,17 +2709,70 @@ class BallSortScene extends BaseGameScene {
   }
   flash(i) {
     const g = this.tubeGeom[i];
-    const r = this.add.rectangle(g.x, g.y, g.w + 20, g.h + 20, 0xffeb3b, 0.35).setStrokeStyle(3, 0xffeb3b, 1).setDepth(50);
+    const r = this.add.rectangle(g.x, g.y, g.w + 20, g.h + 20, 0xe8c874, 0.35).setStrokeStyle(3, 0xe8c874, 1).setDepth(50);
     this.tweens.add({ targets: r, alpha: 0, duration: 600, onComplete: function () { r.destroy(); } });
+  }
+
+  doShuffle() {
+    if (this.animating || this.levelJustFinished) return;
+    const locked = [], free = [];
+    for (let i = 0; i < this.tubes.length; i++) {
+      if (Logic.isUniform(this.tubes[i])) locked.push(i); else free.push(i);
+    }
+    if (free.length === 0) { this.showToast('Все колбы уже собраны'); return; }
+    const balls = [];
+    free.forEach(i => { this.tubes[i].forEach(c => balls.push(c)); });
+    if (balls.length === 0 || balls.length % 4 !== 0) { this.showToast('Нечего перемешивать'); return; }
+    const k = balls.length / 4;
+
+    let next = null;
+    for (let attempt = 0; attempt < 14; attempt++) {
+      Core.Utils.shuffleWith(balls, Math.random);
+      const sub = [];
+      for (let c = 0; c < k; c++) sub.push(balls.slice(c * 4, (c + 1) * 4));
+      sub.push([]); sub.push([]);
+      if (Logic.isSolved(sub)) continue;
+      const info = Core.Solver.shortest(sub, 12000);
+      if (info.status === 'SOLVED') { next = sub; break; }
+    }
+    if (!next) {
+      const byColor = {};
+      balls.forEach(c => { (byColor[c] = byColor[c] || []).push(c); });
+      const cols = Object.keys(byColor).map(Number);
+      const sub = cols.map(c => [c, c, c, c]);
+      sub.push([]); sub.push([]);
+      for (let c = 0; c < cols.length; c++) {
+        const a = c, b = (c + 1) % cols.length;
+        const t = sub[a][3]; sub[a][3] = sub[b][3]; sub[b][3] = t;
+      }
+      next = sub;
+    }
+
+    this.clearSelectionGlow();
+    if (this.tubeGfx) this.tubeGfx.forEach(g => g && g.destroy());
+    if (this.ballGfx) this.ballGfx.forEach(arr => arr.forEach(b => b && b.destroy()));
+    if (this.zones) this.zones.forEach(z => z && z.destroy());
+    this.selected = -1;
+    this.undoStack = [];
+    this.combo = 0; this.updateComboIndicator();
+    for (let j = 0; j < free.length; j++) this.tubes[free[j]] = (next[j] || []).slice();
+    this.shuffleCount = (this.shuffleCount || 0) + 1;
+    this.layoutTubes();
+    this.renderTubes();
+    this.checkDoneTubes();
+    this.refreshUndoButton();
+    Core.Audio.select();
+    Core.Juice.vibrate([20, 20]);
+    this.showToast('Перемешано');
   }
 }
 
 try {
   window.__game = new Phaser.Game({
     type: Phaser.AUTO, width: 720, height: 1280, parent: 'game',
-    backgroundColor: '#0f3460',
+    backgroundColor: '#0a0a10',
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, MenuScene, AchievementsScene, LevelMapScene, ShopScene, BallSortScene]
+    scene: [BootScene, MenuScene, AchievementsScene, LevelMapScene, ShopScene, DailyArchiveScene, BallSortScene]
   });
 } catch (e) {
   if (window.__showFatal) window.__showFatal('Запуск: ' + (e && e.message));
