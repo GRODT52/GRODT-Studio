@@ -18,8 +18,35 @@ header{display:flex;justify-content:space-between;align-items:center;gap:16px;pa
 .logo{font-weight:900;letter-spacing:.3em;color:var(--gold);text-decoration:none;text-shadow:0 0 14px rgba(226,184,87,.6)}
 nav a{color:var(--muted);text-decoration:none;margin-left:22px;font-size:14px;transition:color .2s,text-shadow .2s}
 nav a:hover{color:var(--gold);text-shadow:0 0 12px var(--gold)}
-.lang{appearance:none;-webkit-appearance:none;background:#110d1c;color:var(--gold);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-weight:700;font-size:13px;line-height:1.2;font-family:inherit;letter-spacing:.06em;cursor:pointer;transition:border-color .3s,box-shadow .3s;max-width:160px}
-.lang:hover,.lang:focus-visible{border-color:var(--violet);box-shadow:0 0 16px rgba(160,124,255,.35);outline:none}
+
+/* ——— КАСТОМНЫЙ ВЫБОР ЯЗЫКА ——— */
+.lang-wrap{position:relative}
+.lang-btn{
+  appearance:none;-webkit-appearance:none;background:var(--card);color:var(--gold);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:700;
+  font-size:13px;font-family:inherit;letter-spacing:.06em;cursor:pointer;
+  display:flex;align-items:center;gap:6px;transition:border-color .3s,box-shadow .3s;
+}
+.lang-btn:hover,.lang-btn:focus-visible{border-color:var(--violet);box-shadow:0 0 16px rgba(160,124,255,.35);outline:none}
+.lang-btn .arrow{width:10px;height:10px;fill:var(--gold);transition:transform .2s}
+.lang-btn.active .arrow{transform:rotate(180deg)}
+.lang-menu{
+  position:absolute;top:calc(100% + 8px);right:0;background:var(--card);
+  border:1px solid var(--line);border-radius:12px;padding:6px;min-width:110px;
+  list-style:none;margin:0;z-index:100;opacity:0;visibility:hidden;
+  transform:translateY(-10px);transition:opacity .2s,transform .2s,visibility .2s;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.lang-menu.open{opacity:1;visibility:visible;transform:translateY(0)}
+.lang-menu li{
+  padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--muted);
+  font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;
+  transition:background .2s,color .2s;
+}
+.lang-menu li:hover,.lang-menu li.active{background:rgba(160,124,255,.15);color:var(--text)}
+.lang-menu .flag{font-size:16px;line-height:1}
+/* ——— КОНЕЦ КАСТОМНОГО ВЫБОРА ЯЗЫКА ——— */
+
 .hero{position:relative;padding:70px 0 50px;text-align:center}
 .aura{position:absolute;left:50%;top:0;width:min(560px,92vw);aspect-ratio:1;translate:-50% 0;border-radius:50%;z-index:-1;pointer-events:none;background:conic-gradient(#a07cff,#ff4fa3,#e2b857,#a07cff);filter:blur(80px);opacity:.38;animation:spin 18s linear infinite,br 4s ease-in-out infinite}
 @keyframes spin{to{rotate:360deg}}
@@ -141,6 +168,7 @@ footer{position:relative;z-index:2;margin-top:80px;padding:30px 20px;border-top:
 [dir="rtl"] .log li:last-child{border-right-color:transparent}
 [dir="rtl"] .log li::before{left:auto;right:-7px}
 [dir="rtl"] .log .ver{margin-right:0;margin-left:8px}
+[dir="rtl"] .lang-menu{right:auto;left:0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.js .rv{opacity:1;translate:none}}
 @media (max-width:560px){nav a{margin-left:14px;font-size:13px}.hright{gap:10px}.logo{letter-spacing:.2em}}
 </style>
@@ -180,13 +208,23 @@ window.trackGoal = function(name, params){
       <a href="#changelog" data-i18n="navChangelog">Ченджлог</a>
       <a href="#contacts" data-i18n="navContacts">Контакты</a>
     </nav>
-    <select class="lang" id="lang" aria-label="Language / Язык / Idioma / שפה / 语言">
-      <option value="ru">Русский</option>
-      <option value="en">English</option>
-      <option value="es">Español</option>
-      <option value="he">עברית</option>
-      <option value="zh">简体中文</option>
-    </select>
+    
+    <!-- КАСТОМНЫЙ ВЫБОР ЯЗЫКА -->
+    <div class="lang-wrap">
+      <button class="lang-btn" id="langBtn" aria-expanded="false" aria-label="Выбор языка">
+        <span class="flag">🇷🇺</span> <span class="code">ru</span>
+        <svg class="arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <ul class="lang-menu" id="langMenu" role="menu">
+        <li data-lang="ru" role="menuitem"><span class="flag">🇷🇺</span> ru</li>
+        <li data-lang="en" role="menuitem"><span class="flag">🇬🇧</span> en</li>
+        <li data-lang="es" role="menuitem"><span class="flag">🇪🇸</span> es</li>
+        <li data-lang="he" role="menuitem"><span class="flag">🇮🇱</span> he</li>
+        <li data-lang="zh" role="menuitem"><span class="flag">🇨🇳</span> zh</li>
+      </ul>
+    </div>
+    <!-- КОНЕЦ КАСТОМНОГО ВЫБОРА ЯЗЫКА -->
+
   </div>
 </header>
 
@@ -479,7 +517,49 @@ var I18N = {
 
 var LOCALES = {ru:'ru-RU', en:'en-US', es:'es-ES', he:'he-IL', zh:'zh-CN'};
 var tk = document.getElementById('tk');
-var langSel = document.getElementById('lang');
+
+// ——— ЛОГИКА КАСТОМНОГО ВЫБОРА ЯЗЫКА ———
+var langBtn = document.getElementById('langBtn');
+var langMenu = document.getElementById('langMenu');
+var langItems = document.querySelectorAll('.lang-menu li');
+
+function updateLangButtonUI(lang) {
+  var item = document.querySelector('.lang-menu li[data-lang="' + lang + '"]');
+  if (item) {
+    var flag = item.querySelector('.flag').textContent;
+    langBtn.innerHTML = '<span class="flag">' + flag + '</span> <span class="code">' + lang + '</span> <svg class="arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4"/></svg>';
+    langItems.forEach(function(i) { i.classList.remove('active'); });
+    item.classList.add('active');
+  }
+}
+
+langBtn.addEventListener('click', function(e) {
+  e.stopPropagation();
+  var isExpanded = langBtn.getAttribute('aria-expanded') === 'true';
+  langBtn.setAttribute('aria-expanded', !isExpanded);
+  langBtn.classList.toggle('active');
+  langMenu.classList.toggle('open');
+});
+
+langItems.forEach(function(item) {
+  item.addEventListener('click', function() {
+    var lang = item.getAttribute('data-lang');
+    applyLang(lang);
+    trackGoal('lang_change', {lang: lang});
+    langBtn.setAttribute('aria-expanded', 'false');
+    langBtn.classList.remove('active');
+    langMenu.classList.remove('open');
+  });
+});
+
+document.addEventListener('click', function(e) {
+  if (!langBtn.contains(e.target) && !langMenu.contains(e.target)) {
+    langBtn.setAttribute('aria-expanded', 'false');
+    langBtn.classList.remove('active');
+    langMenu.classList.remove('open');
+  }
+});
+// ——— КОНЕЦ ЛОГИКИ КАСТОМНОГО ВЫБОРА ЯЗЫКА ———
 
 function updateDates(lang){
   var locale = LOCALES[lang] || lang;
@@ -508,7 +588,7 @@ function applyLang(lang){
   }
   tk.innerHTML = d.ticker.repeat(4);
   updateDates(lang);
-  langSel.value = lang;
+  updateLangButtonUI(lang); // Обновляем UI кнопки
   try { localStorage.setItem('grodt-lang', lang); } catch(e){}
 }
 
@@ -518,11 +598,6 @@ var auto = (navigator.language || 'ru').toLowerCase();
 var guess = auto.indexOf('zh') === 0 ? 'zh' : auto.slice(0, 2);
 if(!I18N[guess]) guess = 'ru';
 applyLang(saved && I18N[saved] ? saved : guess);
-
-langSel.addEventListener('change', function(){
-  applyLang(langSel.value);
-  trackGoal('lang_change', {lang: langSel.value});
-});
 
 /* ——— ЦЕЛИ МЕТРИКИ ——— */
 document.querySelectorAll('a.card').forEach(function(a){
