@@ -1694,9 +1694,9 @@ class MenuScene extends Phaser.Scene {
 
     const rewardIndex = (streak - 1) % 7;
 
-    rewards.forEach((r, i) => {
+        rewards.forEach((r, i) => {
       const col = i % 3, row = Math.floor(i / 3);
-      const x = (col - 1) * 140, y = -80 + row * 130;
+      const x = (col - 1) * 140, y = -110 + row * 120; // СДВИНУЛ ВВЕРХ, ЧТОБЫ НЕ ПЕРЕКРЫВАЛО КНОПКУ
       const isToday = i === rewardIndex;
       const isPassed = i < rewardIndex;
       
@@ -1704,19 +1704,32 @@ class MenuScene extends Phaser.Scene {
         .setStrokeStyle(isToday ? 3 : 2, isToday ? 0xe8c874 : 0x3a3450, isToday ? 1 : 0.5);
       panel.add(box);
       
-      panel.add(this.add.text(x, y - 30, 'День ' + (i + 1), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: isToday ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(1));
+      panel.add(this.add.text(x, y - 38, 'День ' + (i + 1), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: isToday ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(1));
       
-      const color = r.type === 'coin' ? 0xe8c874 : (r.type === 'hint' ? 0x7c5cff : 0x2ecc8f);
-      panel.add(this.add.circle(x, y + 5, 14, color).setAlpha(isPassed ? 0.3 : 1));
+      // ИКОНКИ БОНУСОВ ВМЕСТО ШАРИКОВ
+      let icon = null;
+      if (r.type === 'coin') {
+        icon = this.add.image(x, y + 5, 'coin_icon').setDisplaySize(34, 34);
+      } else if (r.type === 'jackpot') {
+        icon = this.add.text(x, y + 5, '👑', { fontSize: '34px' }).setOrigin(0.5);
+      } else if (r.type === 'hint') {
+        icon = this.add.text(x, y + 5, '💡', { fontSize: '32px' }).setOrigin(0.5);
+      } else if (r.type === 'mix') {
+        icon = this.add.text(x, y + 5, '🔀', { fontSize: '32px' }).setOrigin(0.5);
+      }
+      if (icon) {
+        if (isPassed) icon.setAlpha(0.3);
+        panel.add(icon);
+      }
       
-      panel.add(this.add.text(x, y + 38, r.text, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: isToday ? '#f5f0e6' : '#9a8fb8' }).setOrigin(0.5).setResolution(1));
+      panel.add(this.add.text(x, y + 40, r.text, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: isToday ? '#f5f0e6' : '#9a8fb8' }).setOrigin(0.5).setResolution(1));
 
       if (isToday) this.tweens.add({ targets: box, scaleX: 1.05, scaleY: 1.05, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     });
 
-    const btn = this.add.rectangle(0, 220, 300, 64, 0xe8c874).setStrokeStyle(2, 0xa8842a).setInteractive({ useHandCursor: true });
+        const btn = this.add.rectangle(0, 235, 300, 64, 0xe8c874).setStrokeStyle(2, 0xa8842a).setInteractive({ useHandCursor: true });
     panel.add(btn);
-    panel.add(this.add.text(0, 220, 'ЗАБРАТЬ', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(1));
+    panel.add(this.add.text(0, 235, 'ЗАБРАТЬ', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(1));
 
     btn.on('pointerdown', () => {
       const todayReward = rewards[rewardIndex];
