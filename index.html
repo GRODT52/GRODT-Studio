@@ -44,7 +44,17 @@ nav a:hover{color:var(--gold);text-shadow:0 0 12px var(--gold)}
   transition:background .2s,color .2s;
 }
 .lang-menu li:hover,.lang-menu li.active{background:rgba(160,124,255,.15);color:var(--text)}
-.lang-menu .flag{font-size:16px;line-height:1}
+
+/* Стили для SVG-флагов */
+.flag-img {
+  width: 20px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  display: inline-block;
+  vertical-align: middle;
+}
 /* ——— КОНЕЦ КАСТОМНОГО ВЫБОРА ЯЗЫКА ——— */
 
 .hero{position:relative;padding:70px 0 50px;text-align:center}
@@ -209,18 +219,19 @@ window.trackGoal = function(name, params){
       <a href="#contacts" data-i18n="navContacts">Контакты</a>
     </nav>
     
-    <!-- КАСТОМНЫЙ ВЫБОР ЯЗЫКА -->
+    <!-- КАСТОМНЫЙ ВЫБОР ЯЗЫКА С SVG ФЛАГАМИ -->
     <div class="lang-wrap">
       <button class="lang-btn" id="langBtn" aria-expanded="false" aria-label="Выбор языка">
-        <span class="flag">🇷🇺</span> <span class="code">ru</span>
+        <img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/ru.svg" class="flag-img" alt="ru" width="20" height="15">
+        <span class="code">ru</span>
         <svg class="arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4"/></svg>
       </button>
       <ul class="lang-menu" id="langMenu" role="menu">
-        <li data-lang="ru" role="menuitem"><span class="flag">🇷🇺</span> ru</li>
-        <li data-lang="en" role="menuitem"><span class="flag">🇬🇧</span> en</li>
-        <li data-lang="es" role="menuitem"><span class="flag">🇪🇸</span> es</li>
-        <li data-lang="he" role="menuitem"><span class="flag">🇮🇱</span> he</li>
-        <li data-lang="zh" role="menuitem"><span class="flag">🇨🇳</span> zh</li>
+        <li data-lang="ru" role="menuitem"><img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/ru.svg" class="flag-img" alt="ru" width="20" height="15"> ru</li>
+        <li data-lang="en" role="menuitem"><img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/gb.svg" class="flag-img" alt="en" width="20" height="15"> en</li>
+        <li data-lang="es" role="menuitem"><img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/es.svg" class="flag-img" alt="es" width="20" height="15"> es</li>
+        <li data-lang="he" role="menuitem"><img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/il.svg" class="flag-img" alt="he" width="20" height="15"> he</li>
+        <li data-lang="zh" role="menuitem"><img src="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/flags/4x3/cn.svg" class="flag-img" alt="zh" width="20" height="15"> zh</li>
       </ul>
     </div>
     <!-- КОНЕЦ КАСТОМНОГО ВЫБОРА ЯЗЫКА -->
@@ -526,8 +537,9 @@ var langItems = document.querySelectorAll('.lang-menu li');
 function updateLangButtonUI(lang) {
   var item = document.querySelector('.lang-menu li[data-lang="' + lang + '"]');
   if (item) {
-    var flag = item.querySelector('.flag').textContent;
-    langBtn.innerHTML = '<span class="flag">' + flag + '</span> <span class="code">' + lang + '</span> <svg class="arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4"/></svg>';
+    // Берём готовый HTML картинки флага из выбранного пункта меню
+    var flagHtml = item.querySelector('.flag-img').outerHTML;
+    langBtn.innerHTML = flagHtml + ' <span class="code">' + lang + '</span> <svg class="arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4"/></svg>';
     langItems.forEach(function(i) { i.classList.remove('active'); });
     item.classList.add('active');
   }
