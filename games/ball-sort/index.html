@@ -5,33 +5,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 <title>Puzzle Flow — Ball Sort</title>
 
-
-
-
-
 <style>
 @font-face {
   font-family: 'RussoOne';
   src: url('./RussoOne-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
-  font-display: block;
+  font-display: swap;
 }
-
-
-
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100%; height:100%; overflow:hidden; background:#0a0a10;
-  font-family: 'RussoOne', sans-serif;
-  touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
-#game { width:100%; height:100%; }
+html, body { 
+  width:100%; height:100%; overflow:hidden; background:#0a0a10;
+  font-family: 'RussoOne', 'Arial', sans-serif;
+  touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; 
+}
+#game { width:100%; height:100%; position: absolute; top:0; left:0; z-index: 1; }
 canvas { display:block; }
-#err-overlay { position:fixed; left:0; right:0; bottom:0; max-height:45vh; overflow:auto;
+#err-overlay { 
+  position:fixed; left:0; right:0; bottom:0; max-height:45vh; overflow:auto;
   background:#b00020; color:#fff; font:13px/1.5 monospace; padding:12px 16px;
-  z-index:99999; white-space:pre-wrap; display:none; border-top:2px solid #ffb3c1; }
+  z-index:99999; white-space:pre-wrap; display:none; border-top:2px solid #ffb3c1; 
+  pointer-events: none; 
+}
 #err-overlay h3 { margin:0 0 6px; font-size:15px; }
-#err-overlay .close { position:absolute; top:6px; right:10px; cursor:pointer; color:#ffdde4; font-size:18px; }
-
+#err-overlay .close { 
+  position:absolute; top:6px; right:10px; cursor:pointer; color:#ffdde4; font-size:18px; 
+  pointer-events: auto; 
+}
 </style>
 </head>
 <body>
@@ -45,19 +45,21 @@ canvas { display:block; }
 <script>
 (function () {
   var o = document.getElementById('err-overlay'), b = document.getElementById('err-body');
-  function show(m) { o.style.display='block'; b.textContent += (b.textContent?'\n':'') + m; }
+  function show(m) { 
+    console.error(m);
+    o.style.display='block'; 
+    b.textContent += (b.textContent?'\n':'') + m; 
+  }
   window.addEventListener('error', function (e) { show('ERROR: ' + (e.message||e) + ' @ ' + (e.filename||'') + ':' + (e.lineno||'')); });
   window.addEventListener('unhandledrejection', function (e) { show('PROMISE: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
   window.__showFatal = show;
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
 <script>
-  if (typeof Phaser === 'undefined') document.write('<script src="https://unpkg.com/phaser@3.80.1/dist/phaser.min.js"><\/script>');
-</script>
-<script>
-  if (typeof Phaser === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"><\/script>');
+  if (typeof Phaser === 'undefined') document.write('<script src="https://unpkg.com/phaser@3.70.0/dist/phaser.min.js"><\/script>');
+  if (typeof Phaser === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"><\/script>');
 </script>
 
 <script>
@@ -65,30 +67,27 @@ canvas { display:block; }
     var isLocal = (location.protocol === 'file:' || location.hostname === 'localhost' ||
       location.hostname === '127.0.0.1' || location.hostname === '0.0.0.0' || location.hostname === '');
     window.__isLocal = isLocal;
-    if (!isLocal) document.write('<script src="https://yandex.ru/games/sdk/v2"><\/script>');
   })();
 </script>
 
 <script>
   if (typeof Phaser === 'undefined') {
-    document.body.innerHTML = '<div style="color:#fff;padding:24px;font:15px/1.7 sans-serif;max-width:600px;margin:40px auto"><h2 style="color:#ffb3c1">Phaser не загрузился</h2><p>Все CDN упали. Проверь интернет/блокировщики.</p></div>';
+    document.body.innerHTML = '<div style="color:#fff;padding:24px;font:15px/1.7 sans-serif;max-width:600px;margin:40px auto"><h2 style="color:#ffb3c1">Phaser не загрузился</h2></div>';
     throw new Error('Phaser not loaded');
   }
 </script>
 
 <script>
 'use strict';
-/* PF_FONT_MODERATE_APPLIED */
 
 const Core = {};
-// ИСПОЛЬЗУЕМ RUBIK
-Core.FONT = "'RussoOne', sans-serif";
-Core.PF_BUILD = 'ACHCAL-20261111_204233';
+Core.FONT = "'RussoOne', 'Arial', sans-serif";
+Core.PF_BUILD = 'VISUAL_FIX_V5';
 Core.TEST_OBSIDIAN = false;
 Core.DEFAULT_SAVE = {
-  level: 1, totalScore: 0, coins: 150, hintsOwned: 3, shufflesOwned: 2, // ДОБАВИЛИ SHUFFLES
+  level: 1, totalScore: 0, coins: 150, hintsOwned: 3, shufflesOwned: 2,
   bestScores: {}, bestStars: {}, ownedSkins: ['classic'], currentSkin: 'classic',
-  lastDailyBonus: 0, totalLevelsCompleted: 0,
+  lastDailyBonus: 0, totalLevelsCompleted: 0, lastLoginDate: 0, loginStreak: 0,
   achievements: {}, dailyDate: 0, dailyStars: 0,
   ownedBallSkins: ['classic'], currentBallSkin: 'classic',
   dailyHistory: {}, monthlyRewards: {}, upgrades: {}
@@ -116,7 +115,6 @@ function pfMonthLabel(monthKey) {
   return names[m - 1] + ' ' + y;
 }
 
-
 function pfMonthStars(monthKey) {
   const h = Core.SDK.get('dailyHistory', {});
   let sum = 0;
@@ -134,7 +132,7 @@ function todayStr() {
 Core.SDK = {
   ysdk: null, player: null, isStub: true, saveData: {},
   async init() {
-    if (typeof YaGames === 'undefined') { console.log('[SDK] stub'); this.loadStub(); return; }
+    if (typeof YaGames === 'undefined') { console.log('[SDK] stub mode'); this.loadStub(); return; }
     try {
       this.ysdk = await Promise.race([
         YaGames.init(),
@@ -196,33 +194,21 @@ Core.SDK = {
 Core.Achievements = {
   rewardFor: function (id) {
     const map = {
-      first_win: { coins: 50 },
-      lvl_10: { coins: 100 },
-      lvl_25: { coins: 250 },
-      lvl_50: { coins: 500 },
-      lvl_100: { coins: 1000 },
-      score_10k: { coins: 150 },
-      score_50k: { coins: 500 },
-      coins_500: { hints: 2 },
-      coins_2000: { hints: 5 },
-      perfect_5: { coins: 100, hints: 1 },
-      perfect_20: { coins: 300, hints: 3 },
-      stars_100: { coins: 400 },
-      daily_first: { coins: 50 },
-      daily_7: { coins: 150 },
-      daily_30: { coins: 500, hints: 5 },
-      month_stars_30: { coins: 300 },
-      collector: { coins: 200 },
-      upgrades_1: { coins: 50 },
-      upgrades_all: { coins: 500 },
+      first_win: { coins: 50 }, lvl_10: { coins: 100 }, lvl_25: { coins: 250 },
+      lvl_50: { coins: 500 }, lvl_100: { coins: 1000 }, score_10k: { coins: 150 },
+      score_50k: { coins: 500 }, coins_500: { hints: 2 }, coins_2000: { hints: 5 },
+      perfect_5: { coins: 100, hints: 1 }, perfect_20: { coins: 300, hints: 3 },
+      stars_100: { coins: 400 }, daily_first: { coins: 50 }, daily_7: { coins: 150 },
+      daily_30: { coins: 500, hints: 5 }, month_stars_30: { coins: 300 },
+      collector: { coins: 200 }, upgrades_1: { coins: 50 }, upgrades_all: { coins: 500 },
       record_10: { coins: 200 }
     };
     return map[id] || {};
   },
   rewardLabel: function (r) {
     const parts = [];
-    if (r.coins) parts.push('+' + r.coins + ' 🪙');
-    if (r.hints) parts.push('+' + r.hints + ' 💡');
+    if (r.coins) parts.push('+' + r.coins + ' МОНЕТ');
+    if (r.hints) parts.push('+' + r.hints + ' ПОДСКАЗОК');
     return parts.join('  ') || 'награда';
   },
   stats: function () {
@@ -322,34 +308,29 @@ Core.Achievements = {
 
 Core.Skins = {
   tubes: {
-    classic: { name: 'Классика', price: 0,   stroke: 0xffffff, fill: 0xffffff, strokeAlpha: 0.4,  fillAlpha: 0.04, lineWidth: 3, activeStroke: 0xd4af37, activeFill: 0xd4af37, activeFillAlpha: 0.15 },
-    glass:   { name: 'Стекло',   price: 150, stroke: 0xa0e8ff, fill: 0xa0e8ff, strokeAlpha: 0.75, fillAlpha: 0.12, lineWidth: 3, activeStroke: 0xd4af37, activeFill: 0xd4af37, activeFillAlpha: 0.2 },
-    metal:   { name: 'Металл',   price: 200, stroke: 0xc8d0d8, fill: 0x8899a8, strokeAlpha: 0.95, fillAlpha: 0.22, lineWidth: 4, activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.25 },
-    wood:    { name: 'Дерево',   price: 250, stroke: 0xc69050, fill: 0x7a4a20, strokeAlpha: 1,    fillAlpha: 0.4,  lineWidth: 5, activeStroke: 0xffb84d, activeFill: 0xffb84d, activeFillAlpha: 0.3 }
+    classic: { name: 'Классика', price: 0,   stroke: 0xffffff, fill: 0xffffff, strokeAlpha: 0.8,  fillAlpha: 0.15, lineWidth: 3, activeStroke: 0xd4af37, activeFill: 0xd4af37, activeFillAlpha: 0.3 },
+    glass:   { name: 'Стекло',   price: 150, stroke: 0xa0e8ff, fill: 0x2080ff, strokeAlpha: 0.9,  fillAlpha: 0.35, lineWidth: 2, activeStroke: 0xffffff, activeFill: 0xffffff, activeFillAlpha: 0.5 },
+    metal:   { name: 'Металл',   price: 200, stroke: 0xe0e8f0, fill: 0x6a7a8a, strokeAlpha: 1,    fillAlpha: 0.6,  lineWidth: 4, activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.5 },
+    wood:    { name: 'Дерево',   price: 250, stroke: 0xd4a060, fill: 0x8a5a2b, strokeAlpha: 1,    fillAlpha: 0.7,  lineWidth: 4, activeStroke: 0xffb84d, activeFill: 0xffb84d, activeFillAlpha: 0.5 },
+    neon:    { name: 'Неон',     price: 300, stroke: 0xff4ecd, fill: 0xff4ecd, strokeAlpha: 1,    fillAlpha: 0.3,  lineWidth: 3, activeStroke: 0x00e5ff, activeFill: 0x00e5ff, activeFillAlpha: 0.5 },
+    ice:     { name: 'Лёд',      price: 350, stroke: 0xffffff, fill: 0x80d0ff, strokeAlpha: 0.95, fillAlpha: 0.4,  lineWidth: 3, activeStroke: 0xffffff, activeFill: 0xffffff, activeFillAlpha: 0.6 },
+    gold:    { name: 'Золото',   price: 450, stroke: 0xffd700, fill: 0xffa500, strokeAlpha: 1,    fillAlpha: 0.6,  lineWidth: 5, activeStroke: 0xffffff, activeFill: 0xffffff, activeFillAlpha: 0.7 },
+    galaxy:  { name: 'Космос',   price: 500, stroke: 0x7c5cff, fill: 0x1a1a2e, strokeAlpha: 1,    fillAlpha: 0.8,  lineWidth: 3, activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.4 },
+    lava:    { name: 'Лава',     price: 550, stroke: 0xff4500, fill: 0x8b0000, strokeAlpha: 1,    fillAlpha: 0.8,  lineWidth: 4, activeStroke: 0xffcc00, activeFill: 0xffcc00, activeFillAlpha: 0.5 },
+    shadow:  { name: 'Тень',     price: 600, stroke: 0xffffff, fill: 0x0a0a10, strokeAlpha: 0.8,  fillAlpha: 0.9,  lineWidth: 4, activeStroke: 0xffffff, activeFill: 0xffffff, activeFillAlpha: 0.3 }
+  },
+  balls: {
+      classic: { name: 'Классика', price: 0,   style: 'glossy',  perk: {}, perkDesc: 'Базовый стиль' },
+    flat:    { name: 'Плоский',  price: 100, style: 'flat',    perk: { scoreMult: 1.05 }, perkDesc: '+5% очков' },
+    neon:    { name: 'Неон',     price: 150, style: 'neon',    perk: { scoreMult: 1.1 },  perkDesc: '+10% очков' },
+    metal:   { name: 'Металл',   price: 200, style: 'metal',   perk: { coinMult: 1.1 },   perkDesc: '+10% монет' },
+    marble:  { name: 'Мрамор',   price: 250, style: 'marble',  perk: { coinMult: 1.15 },  perkDesc: '+15% монет' },
+    stripes: { name: 'Полосы',   price: 300, style: 'stripes', perk: { scoreMult: 1.15 }, perkDesc: '+15% очков' },
+    galaxy:  { name: 'Космос',   price: 350, style: 'galaxy',  perk: { scoreMult: 1.2 },  perkDesc: '+20% очков' },
+    lava:    { name: 'Лава',     price: 400, style: 'lava',    perk: { coinMult: 1.2 },   perkDesc: '+20% монет' },
+    candy:   { name: 'Леденец',  price: 450, style: 'candy',   perk: { coinMult: 1.25 },  perkDesc: '+25% монет' },
+    glass:   { name: 'Стекло',   price: 500, style: 'glass',   perk: { hintFree: true },  perkDesc: 'Подсказки без штрафа' }
   }
-};
-
-Core.Skins.balls = {
-  classic: { name: 'Классика', price: 0,   style: 'glossy' },
-  flat:    { name: 'Плоский',  price: 100, style: 'flat'   },
-  neon:    { name: 'Неон',     price: 150, style: 'neon'   },
-  metal:   { name: 'Металл',   price: 200, style: 'metal'  }
-};
-
-Core.Skins.tubes.obsidian = {
-  name: 'ОБСИДИАН', price: 0, exclusive: true,
-  stroke: 0xd4af37, fill: 0x0a0a10, strokeAlpha: 1, fillAlpha: 0.6, lineWidth: 4,
-  activeStroke: 0xe8c874, activeFill: 0xe8c874, activeFillAlpha: 0.3
-};
-
-Core.ensureTestObsidian = function () {
-  if (!Core.TEST_OBSIDIAN) return;
-  if (!Core.SDK || !Core.SDK.saveData) return;
-  const owned = Core.SDK.get('ownedSkins', ['classic']).slice();
-  const patch = {};
-  if (owned.indexOf('obsidian') < 0) { owned.push('obsidian'); patch.ownedSkins = owned; }
-  if (!Core.SDK.get('_obsidianTestSeen', false)) { patch.currentSkin = 'obsidian'; patch._obsidianTestSeen = true; }
-  if (Object.keys(patch).length) Core.SDK.save(patch);
 };
 
 Core.syncObsidianAccess = function () {
@@ -381,6 +362,12 @@ Core.SkinPerks = {
     glass: { perk: { hintFree: true }, desc: 'Подсказки не снижают звёзды' },
     metal: { perk: { undoFree: true }, desc: 'Отмены не снижают звёзды' },
     wood: { perk: { coinMult: 1.2 }, desc: '+20% монет за уровень' },
+    neon: { perk: { scoreMult: 1.1 }, desc: '+10% очков' },
+    ice: { perk: { shuffleFree: true }, desc: 'Микс без штрафа' },
+    gold: { perk: { coinMult: 1.3 }, desc: '+30% монет' },
+    galaxy: { perk: { scoreMult: 1.2 }, desc: '+20% очков' },
+    lava: { perk: { coinMult: 1.4 }, desc: '+40% монет' },
+    shadow: { perk: { hintFree: true, coinMult: 1.2 }, desc: 'Подсказки без штрафа · +20% монет' },
     obsidian: { perk: { shuffleFree: true, coinMult: 1.1 }, desc: 'Шаффл без штрафа · +10% монет' }
   }
 };
@@ -389,21 +376,7 @@ Object.keys(Core.Skins.tubes).forEach(function (k) {
   Core.Skins.tubes[k].perk = def.perk;
   Core.Skins.tubes[k].perkDesc = def.desc;
 });
-(function () {
-  const keys = Object.keys(Core.Skins.balls);
-  const presets = [
-    { perk: {}, desc: 'Базовый стиль' },
-    { perk: { scoreMult: 1.1 }, desc: '+10% очков за уровень' },
-    { perk: { scoreMult: 1.15 }, desc: '+15% очков за уровень' },
-    { perk: { coinMult: 1.15 }, desc: '+15% монет за уровень' },
-    { perk: { hintFree: true }, desc: 'Подсказки не снижают звёзды' }
-  ];
-  keys.forEach(function (k, i) {
-    const p = presets[i % presets.length];
-    Core.Skins.balls[k].perk = p.perk;
-    Core.Skins.balls[k].perkDesc = p.desc;
-  });
-})();
+
 Core.activePerks = function () {
   const t = Core.Skins.tubes[Core.SDK.get('currentSkin', 'classic')] || {};
   const b = Core.Skins.balls[Core.SDK.get('currentBallSkin', 'classic')] || {};
@@ -445,13 +418,147 @@ Core.autoClaimMonthly = function (monthKey) {
   Core.SDK.save(patch);
   return newly;
 };
+
 Core.Audio = (function () {
   let ctx = null;
   function ensure() {
     if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
     if (ctx && ctx.state === 'suspended') ctx.resume();
   }
+  Core.Music = (function() {
+    let ctx = null;
+    let masterGain = null;
+    let isPlaying = false;
+    let nextNoteTime = 0;
+    let schedulerTimer = null;
+    
+    // Пентатоника Cmaj для спокойствия
+    const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; 
+    const BASS_FREQ = 65.41; // C2
+
+    function init() {
+        if (!ctx) {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = ctx.createGain();
+            masterGain.gain.value = Core.Settings.musicOn ? 0.12 : 0;
+            
+            // Простой дилей для пространства
+            const delay = ctx.createDelay();
+            delay.delayTime.value = 0.5;
+            const feedback = ctx.createGain();
+            feedback.gain.value = 0.4;
+            
+            masterGain.connect(ctx.destination);
+            masterGain.connect(delay);
+            delay.connect(feedback);
+            feedback.connect(delay);
+            feedback.connect(masterGain);
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+    }
+
+    function playBell(time, freq) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        // Мягкая атака и долгий релиз
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.3, time + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 4);
+        
+        osc.connect(gain);
+        gain.connect(masterGain);
+        
+        osc.start(time);
+        osc.stop(time + 4.5);
+    }
+
+    function playBass(time) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        
+        osc.type = 'triangle';
+        osc.frequency.value = BASS_FREQ;
+        
+        filter.type = 'lowpass';
+        filter.frequency.value = 200;
+        
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.4, time + 2);
+        gain.gain.linearRampToValueAtTime(0, time + 8);
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+        
+        osc.start(time);
+        osc.stop(time + 8.5);
+    }
+
+    function scheduler() {
+        if (!isPlaying || !Core.Settings.musicOn) return;
+        
+        while (nextNoteTime < ctx.currentTime + 0.1) {
+            // Случайный колокольчик
+            if (Math.random() > 0.3) {
+                const note = SCALE[Math.floor(Math.random() * SCALE.length)];
+                const octave = Math.random() > 0.8 ? 2 : 1;
+                playBell(nextNoteTime, note * octave);
+            }
+            
+            // Бас раз в ~8 секунд
+            if (Math.random() > 0.92) {
+                playBass(nextNoteTime);
+            }
+            
+            nextNoteTime += 1.5 + Math.random() * 2.5;
+        }
+        schedulerTimer = requestAnimationFrame(scheduler);
+    }
+
+    return {
+        start: function() {
+            if (isPlaying) return;
+            init();
+            isPlaying = true;
+            nextNoteTime = ctx.currentTime + 0.5;
+            if (masterGain) masterGain.gain.setTargetAtTime(Core.Settings.musicOn ? 0.12 : 0, ctx.currentTime, 0.1);
+            scheduler();
+        },
+        stop: function() {
+            isPlaying = false;
+            if (schedulerTimer) cancelAnimationFrame(schedulerTimer);
+            if (masterGain && ctx) masterGain.gain.setTargetAtTime(0, ctx.currentTime, 0.5);
+        },
+        updateVolume: function() {
+            if (masterGain && ctx) {
+                const target = Core.Settings.musicOn ? 0.12 : 0;
+                masterGain.gain.setTargetAtTime(target, ctx.currentTime, 0.1);
+            }
+        }
+    };
+})();
+
+// Настройки звука
+Core.Settings = {
+    musicOn: localStorage.getItem('pf_music') !== 'false',
+    sfxOn: localStorage.getItem('pf_sfx') !== 'false',
+    toggleMusic: function() {
+        this.musicOn = !this.musicOn;
+        localStorage.setItem('pf_music', this.musicOn);
+        Core.Music.updateVolume();
+    },
+    toggleSfx: function() {
+        this.sfxOn = !this.sfxOn;
+        localStorage.setItem('pf_sfx', this.sfxOn);
+    }
+};
   function tone(freq, dur, type, vol) {
+    if (!Core.Settings.sfxOn) return;
     ensure(); if (!ctx) return;
     const t = ctx.currentTime, osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.type = type || 'sine'; osc.frequency.value = freq;
@@ -495,6 +602,40 @@ Core.Audio = (function () {
   };
 })();
 
+Core.Feel = (function () {
+  'use strict';
+  const REDUCED = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function vib(p) { try { if (navigator.vibrate && !REDUCED) navigator.vibrate(p); } catch (e) {} }
+  const Haptics = {
+    tap:   () => vib(8), place: () => vib(15),
+    combo: (n) => vib(n >= 5 ? [20, 15, 30] : [10, 8, 15]),
+    win:   () => vib([30, 20, 30, 20, 60]), error: () => vib([40, 30, 40]), coin:  () => vib([8, 5, 8])
+  };
+  const Ball = {
+    land(scene, ball) {
+      if (REDUCED || !ball) return;
+      scene.tweens.add({ targets: ball, scaleX: { from: 1.25, to: 1 }, scaleY: { from: 0.75, to: 1 }, duration: 240, ease: 'Elastic.Out' });
+    }
+  };
+  function scorePop(scene, x, y, amount, opts) {
+    opts = opts || {};
+    const t = scene.add.text(x, y, '+' + amount, {
+      fontFamily: Core.FONT, fontSize: (opts.size || 26) * 1.3 + 'px', fontStyle: '900', color: opts.color || '#e8c874', stroke: '#000000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(1000).setScale(0.3).setAlpha(0).setResolution(1);
+    scene.tweens.add({ targets: t, scale: 1.15, alpha: 1, duration: 200, ease: 'Back.Out', onComplete: () => scene.tweens.add({ targets: t, scale: 1, duration: 100 }) });
+    scene.tweens.add({ targets: t, y: y - 80, alpha: 0, duration: 900, delay: 220, ease: 'Cubic.Out', onComplete: () => t.destroy() });
+  }
+  function punch(scene, intensity) { if (REDUCED) return; scene.cameras.main.shake(180, intensity || 0.004); }
+  function zoomPunch(scene, zoom, dur) { if (REDUCED) return; scene.tweens.add({ targets: scene.cameras.main, zoom: zoom || 1.04, duration: dur || 140, yoyo: true, ease: 'Sine.InOut' }); }
+  function victory(scene) {
+    const W = scene.scale.width, H = scene.scale.height;
+    const fl = scene.add.rectangle(0, 0, W, H, 0xffffff, 0.32).setOrigin(0).setDepth(1000);
+    scene.tweens.add({ targets: fl, alpha: 0, duration: 420, onComplete: () => fl.destroy() });
+    zoomPunch(scene, 1.05, 320); Haptics.win();
+  }
+  return { Haptics, Ball, scorePop, punch, zoomPunch, victory, REDUCED };
+})();
+
 Core.Utils = {
   shuffleWith: function (a, rng) {
     const rand = rng || Math.random;
@@ -506,10 +647,7 @@ Core.Utils = {
   }
 };
 
-Core.PALETTE = [
-  0xe04a55, 0x4a90e2, 0x2ecc8f, 0xf0c040, 0xa66de0,
-  0xe67e3c, 0x2bc4c9, 0xe055c0, 0x8d6e63, 0x90a4ae
-];
+Core.PALETTE = [0xe04a55, 0x4a90e2, 0x2ecc8f, 0xf0c040, 0xa66de0, 0xe67e3c, 0x2bc4c9, 0xe055c0, 0x8d6e63, 0x90a4ae];
 
 Core.Juice = {
   vibrate: function (p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} },
@@ -520,11 +658,7 @@ Core.Juice = {
       const sp = (60 + Math.random() * speed);
       const r = 3 + Math.random() * 4;
       const p = scene.add.circle(x, y, r, color, 1).setDepth(950);
-      scene.tweens.add({
-        targets: p, x: x + Math.cos(a) * sp, y: y + Math.sin(a) * sp,
-        alpha: 0, scale: 0.2, duration: 380 + Math.random() * 320, ease: 'Cubic.Out',
-        onComplete: function () { p.destroy(); }
-      });
+      scene.tweens.add({ targets: p, x: x + Math.cos(a) * sp, y: y + Math.sin(a) * sp, alpha: 0, scale: 0.2, duration: 380 + Math.random() * 320, ease: 'Cubic.Out', onComplete: function () { p.destroy(); } });
     }
   },
   flash: function (scene, x, y, r) {
@@ -543,11 +677,7 @@ Core.Juice = {
       const r = 3 + Math.random() * 10;
       const x = Math.random() * W, y = H + Math.random() * H;
       const p = scene.add.circle(x, y, r, color, 0.10 + Math.random() * 0.08).setDepth(depth);
-      scene.tweens.add({
-        targets: p, y: -50, x: x + (Math.random() - 0.5) * 120,
-        duration: 12000 + Math.random() * 12000, repeat: -1, ease: 'Linear',
-        onRepeat: function () { p.x = Math.random() * W; p.y = H + 20; }
-      });
+      scene.tweens.add({ targets: p, y: -50, x: x + (Math.random() - 0.5) * 120, duration: 12000 + Math.random() * 12000, repeat: -1, ease: 'Linear', onRepeat: function () { p.x = Math.random() * W; p.y = H + 20; } });
       scene.tweens.add({ targets: p, alpha: 0.03, duration: 2000 + Math.random() * 2000, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     }
   },
@@ -564,46 +694,209 @@ Core.Juice = {
 
 Core.makeCoinTexture = function (scene) {
   if (scene.textures.exists('coin_icon')) return;
-  const size = 64, cx = size / 2, cy = size / 2, r = size / 2 - 2;
-  const g = scene.add.graphics();
-  g.fillStyle(0x6f5a1f, 1); g.fillCircle(cx, cy, r);
-  g.fillStyle(0xe8c874, 1); g.fillCircle(cx, cy, r - 2);
-  g.lineStyle(2, 0xa8842a, 0.9); g.strokeCircle(cx, cy, r - 8);
-  g.fillStyle(0xf5e6b8, 0.85); g.fillCircle(cx - r * 0.35, cy - r * 0.35, r * 0.3);
-  g.fillStyle(0xffffff, 0.9);  g.fillCircle(cx - r * 0.45, cy - r * 0.45, r * 0.1);
-  g.generateTexture('coin_icon', size, size); g.destroy();
+  const size = 64;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const cx = size / 2, cy = size / 2, r = size / 2 - 2;
+    ctx.fillStyle = '#6f5a1f'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8c874'; ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(168,132,42,0.9)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 8, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(245,230,184,0.85)'; ctx.beginPath(); ctx.arc(cx - r * 0.35, cy - r * 0.35, r * 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(cx - r * 0.45, cy - r * 0.45, r * 0.1, 0, Math.PI * 2); ctx.fill();
+    if (scene.textures.exists('coin_icon')) scene.textures.remove('coin_icon');
+    scene.textures.addCanvas('coin_icon', canvas);
+  } catch (e) { console.error('[coin_icon] failed:', e); }
 };
 
+// ===================== ГЕНЕРАТОРЫ ТЕКСТУР =====================
+Core.createMarbleTexture = function(scene, key, baseColor, veinColor) {
+  if (scene.textures.exists(key)) return;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = baseColor;
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = veinColor;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 12; i++) {
+    ctx.beginPath();
+    let x = Math.random() * size, y = Math.random() * size;
+    ctx.moveTo(x, y);
+    for (let j = 0; j < 6; j++) {
+      x += (Math.random() - 0.5) * 50;
+      y += (Math.random() - 0.5) * 50;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  scene.textures.addCanvas(key, canvas);
+};
+
+Core.createStripesTexture = function(scene, key, baseColor) {
+  if (scene.textures.exists(key)) return;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = baseColor; 
+  ctx.fillRect(0, 0, size, size);
+  
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'; 
+  ctx.lineWidth = 16;
+  for (let i = -size; i < size*2; i += 32) {
+    ctx.beginPath(); 
+    ctx.moveTo(i, 0); 
+    ctx.lineTo(i + size, size); 
+    ctx.stroke();
+  }
+  
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.lineWidth = 6;
+  for (let i = -size; i < size*2; i += 32) {
+    ctx.beginPath(); 
+    ctx.moveTo(i + 10, 0); 
+    ctx.lineTo(i + size + 10, size); 
+    ctx.stroke();
+  }
+  
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  scene.textures.addCanvas(key, canvas);
+};
+
+Core.createGalaxyTexture = function(scene, key, baseColor) {
+  if (scene.textures.exists(key)) return;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  const g = ctx.createRadialGradient(size/2, size/2, 10, size/2, size/2, size/2);
+  g.addColorStop(0, baseColor);
+  g.addColorStop(0.5, '#0a0a10');
+  g.addColorStop(1, '#000000');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  
+  for (let i = 0; i < 80; i++) {
+    const r = Math.random() * 2 + 0.5;
+    ctx.fillStyle = Math.random() > 0.7 ? '#ffffff' : baseColor;
+    ctx.beginPath(); ctx.arc(Math.random()*size, Math.random()*size, r, 0, Math.PI*2); ctx.fill();
+  }
+  scene.textures.addCanvas(key, canvas);
+};
+
+Core.createLavaTexture = function(scene, key, baseColor) {
+  if (scene.textures.exists(key)) return;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = baseColor;
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  for (let i = 0; i < 25; i++) {
+    ctx.beginPath();
+    ctx.arc(Math.random()*size, Math.random()*size, Math.random()*15 + 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  
+  for (let i = 0; i < 20; i++) {
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.8)';
+    ctx.beginPath();
+    ctx.arc(Math.random()*size, Math.random()*size, Math.random()*4 + 1, 0, Math.PI*2);
+    ctx.fill();
+  }
+  scene.textures.addCanvas(key, canvas);
+};
+
+Core.createCandyTexture = function(scene, key, color1, color2) {
+  if (scene.textures.exists(key)) return;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = color1;
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = color2; ctx.lineWidth = 8;
+  for (let i = 0; i < 5; i++) {
+    const a = (i/5) * Math.PI * 2;
+    ctx.beginPath(); ctx.arc(size/2 + Math.cos(a)*30, size/2 + Math.sin(a)*30, 20, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+  scene.textures.addCanvas(key, canvas);
+};
+
+// ===================== ОТРИСОВКА ШАРОВ (ИСПРАВЛЕНО ДЛЯ КОНТРАСТА) =====================
 Core.renderBall = function (scene, radius, color, skinKey) {
-  const skin = Core.Skins.balls[skinKey] || Core.Skins.balls.classic;
   const c = scene.add.container(0, 0);
   const r = radius;
-  switch (skin.style) {
-    case 'flat':
-      c.add(scene.add.circle(0, 0, r, color));
-      c.add(scene.add.circle(0, 0, r).setStrokeStyle(3, 0x000000, 0.35));
-      c.add(scene.add.circle(-r * 0.25, -r * 0.25, r * 0.22, 0xffffff, 0.25));
-      break;
-    case 'neon':
-      c.add(scene.add.circle(0, 0, r + 7, color, 0.25));
-      c.add(scene.add.circle(0, 0, r + 3, color, 0.45));
-      c.add(scene.add.circle(0, 0, r, color));
-      c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0xffffff, 0.85));
-      c.add(scene.add.circle(-r * 0.3, -r * 0.3, r * 0.28, 0xffffff, 0.7));
-      break;
-    case 'metal':
-      c.add(scene.add.circle(r * 0.15, r * 0.2, r * 0.85, 0x000000, 0.35));
-      c.add(scene.add.circle(0, 0, r, 0x202028));
-      c.add(scene.add.circle(0, 0, r - 2, color));
-      c.add(scene.add.circle(0, 0, r - 7, 0x000000, 0.18));
-      c.add(scene.add.circle(-r * 0.32, -r * 0.32, r * 0.3, 0xffffff, 0.7));
-      c.add(scene.add.circle(r * 0.38, r * 0.42, r * 0.2, 0x000000, 0.35));
-      break;
-    default: // glossy
-      c.add(scene.add.circle(4, 6, r - 6, 0x000000, 0.15));
-      c.add(scene.add.circle(0, 0, r, color));
-      c.add(scene.add.circle(-r * 0.3, -r * 0.3, r * 0.3, 0xffffff, 0.35));
+  const col = color;
+  const skin = Core.Skins.balls[skinKey] || Core.Skins.balls.classic;
+  const style = skin.style || 'glossy';
+  const hex = '#' + col.toString(16).padStart(6, '0');
+
+  if (style === 'marble' || style === 'stripes' || style === 'galaxy' || style === 'lava' || style === 'candy') {
+    const key = 'ball_' + skinKey + '_' + col.toString(16);
+    if (!scene.textures.exists(key)) {
+      if (style === 'marble') Core.createMarbleTexture(scene, key, hex, '#ffffff');
+      else if (style === 'stripes') Core.createStripesTexture(scene, key, hex);
+      else if (style === 'galaxy') Core.createGalaxyTexture(scene, key, hex);
+      else if (style === 'lava') Core.createLavaTexture(scene, key, hex);
+      else if (style === 'candy') Core.createCandyTexture(scene, key, hex, '#ffffff');
+    }
+    const img = scene.add.image(0, 0, key);
+    img.setDisplaySize(r * 2, r * 2);
+    c.add(img);
+    
+    // ЖЕСТКАЯ ОБВОДКА ДЛЯ ТЕКСТУРНЫХ ШАРОВ
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2.5, 0x000000, 0.9));
+    return c;
   }
+
+  if (style === 'glossy') {
+    // Тень внутри
+    c.add(scene.add.circle(0, r * 0.1, r, 0x000000, 0.2));
+    // Основной цвет
+    c.add(scene.add.circle(0, 0, r, col));
+    // ЖЕСТКАЯ ОБВОДКА (чтобы отделить от колбы)
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2.5, 0x000000, 0.9));
+    // БЛИК (Gloss)
+    const gloss = scene.add.ellipse(-r * 0.3, -r * 0.35, r * 0.6, r * 0.4, 0xffffff, 0.7);
+    gloss.setAngle(-30); 
+    c.add(gloss);
+    
+  } else if (style === 'flat') {
+    c.add(scene.add.circle(0, 0, r, col));
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(3, 0x000000, 0.9));
+  } else if (style === 'neon') {
+    c.add(scene.add.circle(0, 0, r + 4, col, 0.3));
+    c.add(scene.add.circle(0, 0, r, col));
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0xffffff, 0.9));
+  } else if (style === 'metal') {
+    c.add(scene.add.circle(0, 0, r, 0x202028));
+    c.add(scene.add.circle(0, 0, r - 2, col));
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0x000000, 0.8));
+    c.add(scene.add.circle(-r * 0.3, -r * 0.3, r * 0.3, 0xffffff, 0.6));
+  } else if (style === 'glass') {
+    c.add(scene.add.circle(0, 0, r, col, 0.7)); 
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0xffffff, 0.9));
+    const gloss = scene.add.ellipse(-r * 0.3, -r * 0.35, r * 0.7, r * 0.45, 0xffffff, 0.8);
+    gloss.setAngle(-30); c.add(gloss);
+  } else {
+    c.add(scene.add.circle(0, 0, r, col));
+    c.add(scene.add.circle(0, 0, r).setStrokeStyle(2, 0x000000, 0.8));
+  }
+  
   return c;
 };
 
@@ -619,8 +912,15 @@ Core.coinLabel = function (scene, x, y, amount, opts) {
   const fmt = function (v) { return typeof v === 'number' ? v.toLocaleString('ru-RU') : String(v); };
 
   const txt = scene.add.text(0, 0, fmt(amount), {
-    fontFamily: Core.FONT, fontSize: (fs) * 1.3 + 'px', fontStyle: '900', color: color, stroke: stroke, strokeThickness: st
+    fontFamily: Core.FONT, 
+    fontSize: (fs) * 1.3 + 'px', 
+    fontStyle: 'bold', 
+    color: color, 
+    stroke: stroke, 
+    strokeThickness: st,
+    padding: { x: 8, y: 8 }
   }).setOrigin(0, 0.5);
+
   const layout = function () {
     const totalW = iconSize + gap + txt.width;
     let startX = anchor === 'center' ? -totalW / 2 : (anchor === 'right' ? -totalW : 0);
@@ -631,74 +931,66 @@ Core.coinLabel = function (scene, x, y, amount, opts) {
   const c = scene.add.container(x, y);
   c.add([icon, txt]);
   layout();
-  c.__setAmount = function (v) { txt.setText(fmt(v)); layout(); };
-  c.__tickTo = function (target, dur) {
-    const startV = parseFloat(String(txt.text).replace(/[^\d.-]/g, '')) || 0;
-    scene.tweens.addCounter({
-      from: startV, to: target, duration: dur || 500,
-      onUpdate: function (tw) { c.__setAmount(Math.round(tw.getValue())); },
-      onComplete: function () { c.__setAmount(target); }
-    });
+  
+  c.__setAmount = function (v) { 
+    try {
+      txt.setText(fmt(v)); 
+      layout(); 
+    } catch (e) {
+      console.warn('coinLabel setText skip:', e);
+    }
   };
+  
+  c.__tickTo = function (target, dur) {
+    c.__setAmount(target);
+  };
+  
   return c;
 };
 
 Core.makeGradients = function (scene) {
-  function grad(key, w, h, top, bot, rad) {
-    if (scene.textures.exists(key)) return;
-    const g = scene.add.graphics();
-    g.fillGradientStyle(top, top, bot, bot, 1);
-    g.fillRoundedRect(0, 0, w, h, rad);
-    g.generateTexture(key, w, h); g.destroy();
-  }
-  grad('btn_big',   320, 120, 0xe8c874, 0x9a7b1f, 22);
-  grad('btn_small', 170, 70,  0xd4af37, 0x9a7b1f, 16);
-  grad('btn_menu',  240, 70,  0xd4af37, 0x9a7b1f, 16);
-  grad('btn_daily', 340, 100, 0xe8c874, 0xa8842a, 20);
-  grad('btn_daily_done', 340, 100, 0x2a2138, 0x1c1628, 20);
-  grad('btn_shuffle', 120, 70, 0xf0b060, 0xd35400, 16); // НОВАЯ КНОПКА
   Core.makeCoinTexture(scene);
 };
 
 Core.TextStyles = {
-  title: function (size) {
-    return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '900', color: '#f5f0e6',
-      letterSpacing: 3, stroke: '#000000', strokeThickness: 6 };
-  },
-  heading: function (size) {
-    return { fontFamily: Core.FONT, fontSize: ((size * 1.05)) * 1.3 + 'px', fontStyle: '800', color: '#f5f0e6',
-      letterSpacing: 1, stroke: '#000000', strokeThickness: 5 };
-  },
-  soft: function (size, color) {
-    return { fontFamily: Core.FONT, fontSize: ((size * 1.0)) * 1.3 + 'px', fontStyle: '600', color: color || '#9ca3af' };
-  },
-  gold: function (size) {
-    return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '800', color: '#fcd34d',
-      letterSpacing: 1, stroke: '#000000', strokeThickness: 5 };
-  }
+  title: function (size) { return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '900', color: '#f5f0e6', letterSpacing: 3, stroke: '#000000', strokeThickness: 6 }; },
+  heading: function (size) { return { fontFamily: Core.FONT, fontSize: ((size * 1.05)) * 1.3 + 'px', fontStyle: '800', color: '#f5f0e6', letterSpacing: 1, stroke: '#000000', strokeThickness: 5 }; },
+  soft: function (size, color) { return { fontFamily: Core.FONT, fontSize: ((size * 1.0)) * 1.3 + 'px', fontStyle: '600', color: color || '#9ca3af' }; },
+  gold: function (size) { return { fontFamily: Core.FONT, fontSize: ((size * 1.1)) * 1.3 + 'px', fontStyle: '800', color: '#fcd34d', letterSpacing: 1, stroke: '#000000', strokeThickness: 5 }; }
 };
 
-Core.showAchievement = function (scene, achId) {
+// УВЕДОМЛЕНИЕ ОБ АЧИВКЕ
+Core.showAchievementPopup = function (scene, achId) {
   const ach = Core.Achievements.list.find(function (a) { return a.id === achId; });
   if (!ach) return;
+  
   Core.Audio.achievement();
   Core.Juice.vibrate([20, 15, 30]);
+  
   const W = scene.scale.width;
-  const c = scene.add.container(W / 2, -100).setDepth(2000);
-  c.add(scene.add.rectangle(0, 0, 420, 90, 0x1c1628).setStrokeStyle(3, 0xe8c874));
-  c.add(scene.add.text(-170, 0, ach.icon, { fontSize: '57.2px' }).setOrigin(0.5));
-  c.add(scene.add.text(-130, -18, 'ДОСТИЖЕНИЕ!', {
-    fontFamily: Core.FONT, fontSize: '16.9px', fontStyle: '900', color: '#e8c874'
-  }).setOrigin(0, 0.5));
-  c.add(scene.add.text(-130, 8, ach.name, {
-    fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#f5f0e6'
-  }).setOrigin(0, 0.5));
-  c.add(scene.add.text(-130, 30, ach.desc, {
-    fontFamily: Core.FONT, fontSize: '15.6px', fontStyle: '600', color: '#9a8fb8'
-  }).setOrigin(0, 0.5));
-  scene.tweens.add({ targets: c, y: 130, duration: 500, ease: 'Back.Out' });
-  scene.tweens.add({ targets: c, y: -120, duration: 500, delay: 2400, ease: 'Back.In', onComplete: function () { c.destroy(); } });
-}
+  const c = scene.add.container(W / 2, -120).setDepth(2000);
+  
+  c.add(scene.add.rectangle(0, 0, 460, 100, 0x1c1628).setStrokeStyle(3, 0xe8c874));
+  c.add(scene.add.text(-140, -25, 'ДОСТИЖЕНИЕ!', { 
+    fontFamily: Core.FONT, fontSize: '16px', fontStyle: '900', color: '#e8c874' 
+  }).setOrigin(0, 0.5).setResolution(1));
+  
+  c.add(scene.add.text(-140, 5, ach.title, { 
+    fontFamily: Core.FONT, fontSize: '28px', fontStyle: '900', color: '#f5f0e6' 
+  }).setOrigin(0, 0.5).setResolution(1));
+  
+  c.add(scene.add.text(-140, 32, ach.desc, { 
+    fontFamily: Core.FONT, fontSize: '16px', fontStyle: '600', color: '#9a8fb8' 
+  }).setOrigin(0, 0.5).setResolution(1));
+
+  const star = scene.add.text(180, 0, '★', {
+    fontFamily: Core.FONT, fontSize: '48px', color: '#e8c874'
+  }).setOrigin(0.5).setResolution(1);
+  c.add(star);
+  
+  scene.tweens.add({ targets: c, y: 140, duration: 600, ease: 'Back.Out' });
+  scene.tweens.add({ targets: c, y: -140, duration: 600, delay: 3500, ease: 'Back.In', onComplete: function () { c.destroy(); } });
+};
 
 class BaseGameScene extends Phaser.Scene {
   init(data) {
@@ -712,7 +1004,7 @@ class BaseGameScene extends Phaser.Scene {
     Core.syncObsidianAccess();
     const W = this.scale.width, H = this.scale.height;
     this.cameras.main.setBackgroundColor('#0a0a10');
-    const bg = this.add.graphics();
+    const bg = this.add.graphics().setDepth(-10);
     bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 22, -5);
@@ -720,7 +1012,7 @@ class BaseGameScene extends Phaser.Scene {
     this.moves = 0; this.score = 0; this.animating = false;
     this.levelJustFinished = false;
     this.hintsLeft = Core.SDK.get('hintsOwned', 3);
-    this.shufflesLeft = Core.SDK.get('shufflesOwned', 2); // ДОБАВИЛИ ПЕРЕМЕШКИ
+    this.shufflesLeft = Core.SDK.get('shufflesOwned', 2);
     this.undoCount = 0; this.combo = 0; this.maxCombo = 0;
     this.savedHints = this.hintsLeft;
     this.bestScore = this.isDaily ? 0 : (Core.SDK.get('bestScores', {})[this.level] || 0);
@@ -738,23 +1030,27 @@ class BaseGameScene extends Phaser.Scene {
     const W = this.scale.width;
     const bar = this.add.graphics();
     bar.fillStyle(0x000000, 0.3); bar.fillRect(0, 0, W, 90);
-    const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6'
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     back.on('pointerdown', () => { Core.SDK.gameplayStop(); this.scene.start('Menu'); });
     let title = 'Уровень ' + this.level;
-    if (this.isDaily) title = '🎁 Ежедневный';
-    this.add.text(W / 2, 30, title, Core.TextStyles.heading(26)).setOrigin(0.5);
+    if (this.isDaily) title = 'Ежедневный вызов';
+    this.add.text(W / 2, 30, title, Core.TextStyles.heading(26)).setOrigin(0.5).setResolution(1);
     const subtitle = this.bestScore > 0 ? 'Рекорд: ★ ' + this.bestScore : (this.isDaily ? 'Только раз в день' : '');
-    this.add.text(W / 2, 62, subtitle, Core.TextStyles.soft(13, '#9a8fb8')).setOrigin(0.5);
+    this.add.text(W / 2, 62, subtitle, Core.TextStyles.soft(13, '#9a8fb8')).setOrigin(0.5).setResolution(1);
     this.coinLabel = Core.coinLabel(this, 20, 110, Core.SDK.get('coins', 0), { fontSize: 18, iconSize: 20, anchor: 'left' });
-    this.scoreText = this.add.text(W - 20, 28, '★ 0', {
-      fontFamily: Core.FONT, fontSize: '33.8px', fontStyle: '900', color: '#e8c874', stroke: '#000000', strokeThickness: 3
-    }).setOrigin(1, 0.5);
-    this.movesText = this.add.text(W - 20, 66, 'Ходы: 0', Core.TextStyles.soft(14, '#9a8fb8')).setOrigin(1, 0.5);
-    this.comboText = this.add.text(W - 20, 108, '', {
-      fontFamily: Core.FONT, fontSize: '28.6px', fontStyle: '900', color: '#f0b060', stroke: '#000000', strokeThickness: 3
-    }).setOrigin(1, 0.5).setVisible(false);
+        // КНОПКА ЗВУКА
+    this.soundBtn = this.add.text(W - 20, 110, Core.Settings.musicOn ? '🔊' : '🔇', {
+        fontFamily: Core.FONT, fontSize: '32px', color: '#f5f0e6'
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
+    
+    this.soundBtn.on('pointerdown', () => {
+        Core.Settings.toggleMusic();
+        this.soundBtn.setText(Core.Settings.musicOn ? '🔊' : '🔇');
+        if (Core.Settings.musicOn) Core.Music.start();
+    });
+    this.scoreText = this.add.text(W - 20, 28, '★ 0', { fontFamily: Core.FONT, fontSize: '33.8px', fontStyle: '900', color: '#e8c874', stroke: '#000000', strokeThickness: 3 }).setOrigin(1, 0.5).setResolution(1);
+    this.movesText = this.add.text(W - 20, 66, 'Ходы: 0', Core.TextStyles.soft(14, '#9a8fb8')).setOrigin(1, 0.5).setResolution(1);
+    this.comboText = this.add.text(W - 20, 108, '', { fontFamily: Core.FONT, fontSize: '28.6px', fontStyle: '900', color: '#f0b060', stroke: '#000000', strokeThickness: 3 }).setOrigin(1, 0.5).setVisible(false).setResolution(1);
   }
   updateMoves() {
     if (!this.movesText) return;
@@ -793,12 +1089,7 @@ class BaseGameScene extends Phaser.Scene {
     if (g) {
       const size = opts.size || 26;
       const color = opts.color || '#e8c874';
-      const t = this.add.text(g.x, g.y - g.h / 2 - 16, '+' + pts, {
-        fontFamily: Core.FONT, fontSize: (size) * 1.3 + 'px', fontStyle: '900', color: color,
-        stroke: '#000000', strokeThickness: 4
-      }).setOrigin(0.5).setDepth(1000).setScale(0);
-      this.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.Out' });
-      this.tweens.add({ targets: t, y: t.y - 65, alpha: 0, duration: 800, delay: 200, ease: 'Cubic.Out', onComplete: () => t.destroy() });
+      Core.Feel.scorePop(this, g.x, g.y - g.h / 2 - 16, pts, { color: color, size: size });
     }
     this.tweens.add({ targets: this.scoreText, scale: 1.25, duration: 130, yoyo: true, ease: 'Quad.Out' });
     Core.Audio.score();
@@ -806,15 +1097,20 @@ class BaseGameScene extends Phaser.Scene {
   createBottomBar() {
     const W = this.scale.width, H = this.scale.height;
     const y = H - 104;
-    this.undoBtn = this.makeBtn(W/2 - 150, y, '↶', 'Отмена хода', () => this.doUndo());
-    this.shuffleBtn = this.makeBtn(W/2, y, '🔀', 'Перемешать', () => this.doShuffle());
-    this.hintBtn = this.makeBtn(W/2 + 150, y, '💡', 'Подсказка', () => this.doHint());
+    
+    // Кнопка ЗАНОВО
+    this.restartBtn = this.makeBtn(W/2 - 220, y, '↺', 'Заново', () => this.doRestart());
+    this.undoBtn = this.makeBtn(W/2 - 75, y, '↶', 'Отмена хода', () => this.doUndo());
+    this.shuffleBtn = this.makeBtn(W/2 + 75, y, 'Микс', 'Перемешать', () => this.doShuffle());
+    this.hintBtn = this.makeBtn(W/2 + 220, y, 'Идея', 'Подсказка', () => this.doHint());
+    
     const badge = this.add.circle(38, 30, 15, 0xd4af37, 1);
     const badgeText = this.add.text(38, 30, String(this.hintsLeft), {
       fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#0a0a10'
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(1);
     this.hintBtn.container.add([badge, badgeText]);
     this.hintBtn.badgeText = badgeText;
+    
     this.refreshUndoButton();
     this.updateHintLabel();
   }
@@ -826,14 +1122,13 @@ class BaseGameScene extends Phaser.Scene {
     bg.lineStyle(2, 0xd4af37, 0.75); bg.strokeRoundedRect(-w/2, -h/2, w, h, 20);
     c.add(bg);
     const iconT = this.add.text(0, -4, icon, {
-      fontFamily: Core.FONT, fontSize: '38px', fontStyle: '400', color: '#f5f0e6'
-    }).setOrigin(0.5).setResolution(2);
+      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '400', color: '#f5f0e6'
+    }).setOrigin(0.5).setResolution(1);
     c.add(iconT);
-
     const tip = this.add.container(0, -h/2 - 34);
     const tipText = this.add.text(0, 0, label, {
       fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#f5f0e6'
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(1);
     const tw = Math.max(120, tipText.width + 28), th = 36;
     const tipBg = this.add.graphics();
     tipBg.fillStyle(0x0a0a10, 0.96); tipBg.fillRoundedRect(-tw/2, -th/2, tw, th, 12);
@@ -842,7 +1137,6 @@ class BaseGameScene extends Phaser.Scene {
     tip.add([tipBg, tipText]);
     tip.setVisible(false);
     c.add(tip);
-
     const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
     c.add(hit);
     hit.on('pointerover', () => { tip.setVisible(true); bg.setAlpha(0.85); });
@@ -855,24 +1149,41 @@ class BaseGameScene extends Phaser.Scene {
     if (!this.undoBtn) return;
     const disabled = !this.undoStack || this.undoStack.length === 0 || this.animating;
     this.undoBtn.container.setAlpha(disabled ? 0.4 : 1);
+    this.restartBtn.container.setAlpha(this.animating ? 0.4 : 1);
   }
   showToast(msg) {
     const W = this.scale.width, H = this.scale.height;
     const t = this.add.text(W / 2, H * 0.85, msg, {
       fontFamily: Core.FONT, fontSize: '23.4px', fontStyle: '800', color: '#f5f0e6',
       backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
-    }).setOrigin(0.5).setDepth(1000);
+    }).setOrigin(0.5).setDepth(1000).setResolution(1);
     this.tweens.add({ targets: t, alpha: 0, y: H * 0.8, duration: 1400, delay: 900, onComplete: () => t.destroy() });
   }
 
-  // ЛОГИКА ПЕРЕМЕШКИ
+  doRestart() {
+    if (this.animating) return;
+    this.scene.restart({ level: this.level, mode: this.mode, seed: this.seed, dailyDate: this.dailyDate });
+  }
+
   async doShuffle() {
     if (this.animating || this.levelJustFinished) return;
+    
+    if (this.selected === -1) {
+        this.showToast('Выберите колбу для микса!');
+        return;
+    }
+
+    const targetTube = this.selected;
+    if (this.tubes[targetTube].length === 0 || Logic.isUniform(this.tubes[targetTube])) {
+        this.showToast('Эту колбу нельзя миксовать');
+        return;
+    }
+
     if (this.shufflesLeft > 0) {
       this.shufflesLeft--;
       Core.SDK.save({ shufflesOwned: this.shufflesLeft });
       this.updateShuffleLabel();
-      this.performShuffle();
+      this.performShuffle(targetTube);
       return;
     }
     const coins = Core.SDK.get('coins', 0);
@@ -887,48 +1198,32 @@ class BaseGameScene extends Phaser.Scene {
   }
   updateShuffleLabel() { if (this.shuffleBtn) this.shuffleBtn.labelT.setText('Микс (' + this.shufflesLeft + ')'); }
   
-  performShuffle() {
+  performShuffle(targetIndex) {
     this.animating = true;
-    const activeTubes = [];
-    const allBalls = [];
-    
-    // Собираем все шары из нерешенных колб
-    this.tubes.forEach((t, i) => {
-      if (!Logic.isUniform(t)) {
-        activeTubes.push(i);
-        allBalls.push(...t);
-      }
-    });
-    
-    // Перемешиваем
-    Core.Utils.shuffleWith(allBalls);
-    
-    // Распределяем обратно
-    let ballIdx = 0;
-    activeTubes.forEach(i => {
-      const count = this.tubes[i].length;
-      this.tubes[i] = allBalls.slice(ballIdx, ballIdx + count);
-      ballIdx += count;
-    });
+    this.clearSelectionGlow();
+    this.drawTube(targetIndex, false);
+    this.liftTop(targetIndex, false);
+    this.selected = -1;
 
-    // Визуально обновляем
-    activeTubes.forEach(i => {
-      this.ballGfx[i].forEach(b => b.destroy());
-      this.ballGfx[i] = [];
-      for (let j = 0; j < this.tubes[i].length; j++) {
-        const b = this.makeBall(i, j);
-        b.setAlpha(0);
-        this.tweens.add({ targets: b, alpha: 1, duration: 300 });
-        this.ballGfx[i].push(b);
-      }
-    });
+    const balls = this.tubes[targetIndex].slice();
+    Core.Utils.shuffleWith(balls);
+    this.tubes[targetIndex] = balls;
 
+    this.ballGfx[targetIndex].forEach(b => b.destroy());
+    this.ballGfx[targetIndex] = [];
+    for (let j = 0; j < this.tubes[targetIndex].length; j++) {
+      const b = this.makeBall(targetIndex, j);
+      b.setAlpha(0);
+      this.tweens.add({ targets: b, alpha: 1, duration: 300 });
+      this.ballGfx[targetIndex].push(b);
+    }
+    
     Core.Juice.screenFlash(this, 0xf0b060, 0.2, 300);
     Core.Audio.select();
-    
     this.time.delayedCall(350, () => {
       this.animating = false;
       this.checkDoneTubes();
+      this.refreshUndoButton();
     });
   }
 
@@ -946,14 +1241,14 @@ class BaseGameScene extends Phaser.Scene {
     const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0).setInteractive().setDepth(1001);
     const panel = this.add.container(W / 2, H / 2).setDepth(1002);
     panel.add(this.add.rectangle(0, 0, 440, 340, 0x1c1628).setStrokeStyle(4, 0xd4af37));
-    panel.add(this.add.text(0, -130, 'Нет подсказок', Core.TextStyles.title(32)).setOrigin(0.5));
-    panel.add(this.add.text(0, -80, 'Как получить ещё?', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5));
+    panel.add(this.add.text(0, -130, 'Нет подсказок', Core.TextStyles.title(32)).setOrigin(0.5).setResolution(1));
+    panel.add(this.add.text(0, -80, 'Как получить ещё?', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5).setResolution(1));
     const coins = Core.SDK.get('coins', 0), canBuy = coins >= 30;
     const adBtn = this.add.rectangle(0, -25, 380, 60, 0xd4af37).setOrigin(0.5).setInteractive({ useHandCursor: true });
     panel.add(adBtn);
-    panel.add(this.add.text(0, -25, '🎬  +1 за рекламу', {
-      fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: '#0a0a10'
-    }).setOrigin(0.5));
+    panel.add(this.add.text(0, -25, 'СМОТРЕТЬ РЕКЛАМУ (+1)', {
+      fontFamily: Core.FONT, fontSize: '22px', fontStyle: '900', color: '#0a0a10'
+    }).setOrigin(0.5).setResolution(1));
     adBtn.on('pointerover', () => adBtn.setFillStyle(0xf0d68a));
     adBtn.on('pointerout',  () => adBtn.setFillStyle(0xd4af37));
     adBtn.on('pointerdown', async () => {
@@ -968,7 +1263,7 @@ class BaseGameScene extends Phaser.Scene {
     panel.add(buyBtn);
     panel.add(this.add.text(0, 50, canBuy ? 'Купить за 30' : 'Не хватает монет', {
       fontFamily: Core.FONT, fontSize: '26px', fontStyle: '900', color: canBuy ? '#0a0a10' : '#9a8fb8'
-    }).setOrigin(0.5));
+    }).setOrigin(0.5).setResolution(1));
     if (canBuy) {
       buyBtn.on('pointerover', () => buyBtn.setFillStyle(0xffe566));
       buyBtn.on('pointerout',  () => buyBtn.setFillStyle(0xe8c874));
@@ -979,7 +1274,7 @@ class BaseGameScene extends Phaser.Scene {
         Core.Audio.buy(); this.showToast('Куплено!'); this.showHint();
       });
     }
-    const close = this.add.text(0, 130, 'Отмена', Core.TextStyles.soft(16, '#9a8fb8')).setOrigin(0.5).setInteractive();
+    const close = this.add.text(0, 130, 'Отмена', Core.TextStyles.soft(16, '#9a8fb8')).setOrigin(0.5).setInteractive().setResolution(1);
     close.on('pointerdown', () => { overlay.destroy(); panel.destroy(); });
     panel.add(close);
     panel.setScale(0.7); panel.setAlpha(0);
@@ -996,13 +1291,15 @@ class BaseGameScene extends Phaser.Scene {
     const isBig = n >= 5, isHuge = n >= 10;
     if (isBig) {
       Core.Audio.bigCombo();
-      this.cameras.main.shake(220, 0.005);
+      Core.Feel.punch(this, isHuge ? 0.008 : 0.005);
+      Core.Feel.zoomPunch(this, isHuge ? 1.06 : 1.03, 160);
       Core.Juice.screenFlash(this, 0xe8c874, 0.22, 240);
-      this.tweens.add({ targets: this.cameras.main, zoom: 1.03, duration: 150, yoyo: true, ease: 'Sine.InOut' });
-      Core.Juice.vibrate([30, 20, 40]);
-    } else { Core.Audio.combo(n); Core.Juice.vibrate(15); }
+    } else {
+      Core.Audio.combo(n);
+    }
+    Core.Feel.Haptics.combo(n);
     const fontSize = isHuge ? 56 : (isBig ? 46 : 38);
-    const t = this.add.text(W / 2, 190, 'x' + n + ' КОМБО!', Core.TextStyles.title(fontSize)).setOrigin(0.5).setDepth(1500);
+    const t = this.add.text(W / 2, 190, 'x' + n + ' КОМБО!', Core.TextStyles.title(fontSize)).setOrigin(0.5).setDepth(1500).setResolution(1);
     t.setScale(0.2);
     this.tweens.add({ targets: t, scale: 1, duration: 300, ease: 'Back.Out' });
     this.tweens.add({ targets: t, alpha: 0, y: 140, duration: 800, delay: 600, onComplete: function () { t.destroy(); } });
@@ -1023,18 +1320,7 @@ class BaseGameScene extends Phaser.Scene {
     const newly = Core.Achievements.sync();
     newly.forEach((a, i) => {
       this.time.delayedCall(700 + i * 1100, () => {
-        const r = Core.Achievements.rewardFor(a.id);
-        const rewardText = Core.Achievements.rewardLabel(r);
-        if (typeof Core.showAchievement === 'function') { try { Core.showAchievement(this, a); return; } catch (e) {} }
-        const W = this.scale.width;
-        const b = this.add.container(W / 2, 80).setDepth(2000);
-        b.add(this.add.rectangle(0, 0, 420, 80, 0x1c1628).setStrokeStyle(2, 0xe8c874, 1));
-        b.add(this.add.text(-190, -22, 'ДОСТИЖЕНИЕ', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
-        b.add(this.add.text(-190, 2, a.title, { fontFamily: Core.FONT, fontSize: '17px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
-        b.add(this.add.text(-190, 24, rewardText, { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
-        b.setAlpha(0);
-        this.tweens.add({ targets: b, alpha: 1, y: 115, duration: 300, ease: 'Back.Out' });
-        this.time.delayedCall(2600, () => { this.tweens.add({ targets: b, alpha: 0, y: 85, duration: 300, onComplete: () => b.destroy() }); });
+        Core.showAchievementPopup(this, a.id);
       });
     });
   }
@@ -1065,17 +1351,13 @@ class BaseGameScene extends Phaser.Scene {
       const bestScore = Math.max(prev && prev.bestScore ? prev.bestScore : 0, this.score);
       const bestStars = Math.max(prev && prev.bestStars ? prev.bestStars : 0, stars);
       history[dateKey] = {
-        bestScore: bestScore, bestStars: bestStars,
-        lastScore: this.score, lastStars: stars,
-        moves: this.moves, par: this.parMoves || 0,
-        plays: (prev && prev.plays ? prev.plays : 0) + 1,
-        completedAt: prev && prev.completedAt ? prev.completedAt : Date.now(),
-        updatedAt: Date.now()
+        bestScore: bestScore, bestStars: bestStars, lastScore: this.score, lastStars: stars,
+        moves: this.moves, par: this.parMoves || 0, plays: (prev && prev.plays ? prev.plays : 0) + 1,
+        completedAt: prev && prev.completedAt ? prev.completedAt : Date.now(), updatedAt: Date.now()
       };
       patch.dailyHistory = history;
       if (dateKey === todayStr()) {
-        patch.dailyDate = dateKey;
-        patch.dailyStars = Math.max(Core.SDK.get('dailyStars', 0), stars);
+        patch.dailyDate = dateKey; patch.dailyStars = Math.max(Core.SDK.get('dailyStars', 0), stars);
       }
       coinsEarned = firstDaily ? (baseCoins + 100 + (up.dailyBonus ? 50 : 0)) : 0;
       if (firstDaily) {
@@ -1108,17 +1390,13 @@ class BaseGameScene extends Phaser.Scene {
     this.totalCoins = patch.coins;
     this.isNewRecord = isNewRecord;
     this.starsGot = stars;
-    this.recordAfter = this.isDaily
-      ? (Core.SDK.get('dailyHistory', {})[this.dailyDate] || {}).bestScore || this.score
-      : Core.SDK.get('bestScores', {})[this.level - 1] || this.score;
+    this.recordAfter = this.isDaily ? (Core.SDK.get('dailyHistory', {})[this.dailyDate] || {}).bestScore || this.score : Core.SDK.get('bestScores', {})[this.level - 1] || this.score;
     Core.Audio.win();
     if (isNewRecord) this.time.delayedCall(500, () => Core.Audio.record());
-    Core.Juice.vibrate([40, 40, 40, 40, 80]);
-    this.cameras.main.shake(280, 0.004);
-    Core.Juice.screenFlash(this, 0xf5f0e6, 0.3, 400);
+    Core.Feel.victory(this);
     this.spawnConfetti();
     this.checkAchievementsAfterWin(stars, Core.SDK.get('totalLevelsCompleted', 0));
-    this.time.delayedCall(1100, () => this.showWinPanel());
+    this.time.delayedCall(1000, () => this.showWinPanel());
   }
   spawnConfetti() {
     const W = this.scale.width, H = this.scale.height;
@@ -1140,41 +1418,41 @@ class BaseGameScene extends Phaser.Scene {
     const panel = this.add.container(W / 2, H / 2).setDepth(1002);
     panel.add(this.add.rectangle(0, 0, 500, 640, 0x1c1628).setStrokeStyle(3, this.isDaily ? 0x7c5cff : 0xd4af37));
     const title = this.isDaily ? (this.dailyFirstCompletion ? 'ВЫЗОВ ДНЯ ПРОЙДЕН' : 'РЕЗУЛЬТАТ УЛУЧШЕН') : 'ПОБЕДА!';
-    panel.add(this.add.text(0, -272, title, { fontFamily: Core.FONT, fontSize: '34px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 5 }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, -272, title, { fontFamily: Core.FONT, fontSize: '34px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 5 }).setOrigin(0.5).setResolution(1));
 
     for (let i = 0; i < 3; i++) {
       const on = i < stars;
       const star = this.add.text(-84 + i * 84, -200, '★', {
         fontFamily: Core.FONT, fontSize: '66px', fontStyle: '400',
         color: on ? '#e8c874' : '#3a3450', stroke: on ? '#8a6d1f' : '#1c1628', strokeThickness: on ? 4 : 2
-      }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(2);
+      }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(1);
       panel.add(star);
       this.tweens.add({ targets: star, alpha: 1, scale: on ? 1 : 0.85, duration: 380, delay: 200 + i * 140, ease: 'Back.Out' });
     }
 
     if (this.isNewRecord) {
-      const rec = this.add.text(0, -142, 'НОВЫЙ РЕКОРД ЗАФИКСИРОВАН', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(2);
+      const rec = this.add.text(0, -142, 'НОВЫЙ РЕКОРД ЗАФИКСИРОВАН', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0).setScale(0.3).setResolution(1);
       panel.add(rec);
       this.tweens.add({ targets: rec, alpha: 1, scale: 1, duration: 500, delay: 900, ease: 'Back.Out' });
     }
 
-    panel.add(this.add.text(0, -98, '★ ' + this.levelScore, { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, -98, '★ ' + this.levelScore, { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(1));
 
     let breakdown = 'База ' + b.base + ' · Точность +' + b.eff + ' · Звёзды +' + b.starBonus;
     if (b.penalty) breakdown += ' · Штраф −' + b.penalty;
     if (b.scoreMult > 1) breakdown += ' · Скин ×' + b.scoreMult;
-    panel.add(this.add.text(0, -54, breakdown, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, -54, breakdown, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5).setResolution(1));
 
     const coinsLabel = Core.coinLabel(this, 0, -10, 0, { fontSize: 26, iconSize: 28, anchor: 'center' });
     panel.add(coinsLabel);
     this.time.delayedCall(500, () => { coinsLabel.__tickTo(this.coinsEarned, 900); });
     if (this.coinMult > 1) {
-      panel.add(this.add.text(0, 22, 'Скин: монеты ×' + this.coinMult, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
+      panel.add(this.add.text(0, 22, 'Скин: монеты ×' + this.coinMult, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1));
     }
 
-    panel.add(this.add.text(0, 62, 'Ходы: ' + this.moves + (b.par ? ' / цель ' + b.par : ''), { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#c9c2d8' }).setOrigin(0.5).setResolution(2));
-    panel.add(this.add.text(0, 96, 'Рекорд: ★ ' + this.recordAfter, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
-    panel.add(this.add.text(0, 128, 'Всего очков: ' + this.totalScore, { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2));
+    panel.add(this.add.text(0, 62, 'Ходы: ' + this.moves + (b.par ? ' / цель ' + b.par : ''), { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#c9c2d8' }).setOrigin(0.5).setResolution(1));
+    panel.add(this.add.text(0, 96, 'Рекорд: ★ ' + this.recordAfter, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1));
+    panel.add(this.add.text(0, 128, 'Всего очков: ' + this.totalScore, { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1));
 
     const drawIcon = (type, color) => {
       const g = this.add.graphics();
@@ -1230,7 +1508,10 @@ class BaseGameScene extends Phaser.Scene {
     }
 
     panel.setScale(0.6); panel.setAlpha(0);
-    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 500, ease: 'Back.Out' });
+    this.tweens.add({
+      targets: panel, scale: 1, alpha: 1, duration: 520, ease: 'Back.Out',
+      onComplete: () => Core.Feel.Haptics.tap()
+    });
   }
   buildLevel(level) { throw new Error('not implemented'); }
   resetState() { throw new Error('not implemented'); }
@@ -1267,10 +1548,8 @@ class BootScene extends Phaser.Scene {
   async create() {
     const W = this.scale.width, H = this.scale.height;
     this.cameras.main.setBackgroundColor('#0a0a10');
-    const loading = this.add.text(W / 2, H / 2, 'Загрузка...', Core.TextStyles.heading(30)).setOrigin(0.5);
+    const loading = this.add.text(W / 2, H / 2, 'Загрузка...', Core.TextStyles.heading(30)).setOrigin(0.5).setResolution(1);
     this.tweens.add({ targets: loading, alpha: 0.35, duration: 600, yoyo: true, repeat: -1 });
-    
-    // ЖДЕМ ЗАГРУЗКУ RUSSO ONE
     try {
       await Promise.race([
         document.fonts.load('400 32px "RussoOne"', 'УРОВЕНЬ Daily 123'),
@@ -1322,7 +1601,7 @@ class MenuScene extends Phaser.Scene {
       fontFamily: Core.FONT, fontSize: size + 'px', fontStyle: '400', color: color,
       stroke: opts.stroke || '#000000', strokeThickness: opts.strokeW != null ? opts.strokeW : 0,
       align: opts.align || 'center'
-    }).setOrigin(opts.ox != null ? opts.ox : 0.5, opts.oy != null ? opts.oy : 0.5).setResolution(2);
+    }).setOrigin(opts.ox != null ? opts.ox : 0.5, opts.oy != null ? opts.oy : 0.5).setResolution(1);
     return t;
   }
 
@@ -1334,9 +1613,6 @@ class MenuScene extends Phaser.Scene {
     const S = styles[this.menuStyle % styles.length];
     this.S = S;
 
-    const bg = this.add.graphics();
-    bg.fillGradientStyle(S.bgTop, S.bgTop, S.bgBot, S.bgBot, 1);
-    bg.fillRect(0, 0, W, H);
     this.drawAmbience(S, W, H);
 
     for (let i = 0; i < 24; i++) {
@@ -1351,7 +1627,7 @@ class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: title, scale: 1.03, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.add.text(W/2, H*0.14 + 44, GameRegistry.title.toUpperCase(), {
       fontFamily: Core.FONT, fontSize: '17px', fontStyle: '400', color: this.css(S.accent), letterSpacing: 5
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(1);
 
     const totalScore = Core.SDK.get('totalScore', 0);
     const coins = Core.SDK.get('coins', 0);
@@ -1361,25 +1637,119 @@ class MenuScene extends Phaser.Scene {
     curC.add(Core.coinLabel(this, 62, 0, coins, { fontSize: 18, iconSize: 20, anchor: 'center' }));
 
     this.createPlayButton(W/2, H*0.40, S);
-    this.createSideButton(W/2 - 95, H*0.535, 'УРОВНИ', '🗺', S, () => this.scene.start('LevelMap'));
-    this.createSideButton(W/2 + 95, H*0.535, 'МАГАЗИН', '🛒', S, () => this.scene.start('Shop'));
+    this.createSideButton(W/2 - 95, H*0.535, 'УРОВНИ', 'MAP', S, () => this.scene.start('LevelMap'));
+    this.createSideButton(W/2 + 95, H*0.535, 'МАГАЗИН', 'SHOP', S, () => this.scene.start('Shop'));
     this.createDailyButton(W/2, H*0.66, S);
     this.createArchiveButton(W/2, H*0.76, S);
     this.createTestBadge(S);
+        // КНОПКА ЗВУКА В МЕНЮ
+    const soundIcon = Core.Settings.musicOn ? '🔊' : '🔇';
+    this.menuSoundBtn = this.add.text(W - 20, 110, soundIcon, {
+        fontFamily: Core.FONT, fontSize: '36px', color: S.text
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
+    
+    this.menuSoundBtn.on('pointerdown', () => {
+        Core.Settings.toggleMusic();
+        this.menuSoundBtn.setText(Core.Settings.musicOn ? '🔊' : '🔇');
+        if (Core.Settings.musicOn) Core.Music.start();
+    });
     this.createResetButton(W/2, H*0.93, S);
 
     this.cameras.main.fadeIn(240, 0, 0, 0);
+    
+    this.time.delayedCall(100, () => this.checkDailyStreak());
+  }
+
+  checkDailyStreak() {
+    const today = new Date();
+    const todayStr = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+    const lastStr = Core.SDK.get('lastLoginDate', 0);
+    
+    if (todayStr > lastStr) {
+      let streak = Core.SDK.get('loginStreak', 0) + 1;
+      if (streak > 7) streak = 1;
+      Core.SDK.save({ lastLoginDate: todayStr, loginStreak: streak });
+      this.showDailyRewardPanel(streak);
+    }
+  }
+
+  showDailyRewardPanel(streak) {
+    const W = this.scale.width, H = this.scale.height;
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.85).setOrigin(0).setInteractive().setDepth(9999);
+    const panel = this.add.container(W / 2, H / 2).setDepth(10000);
+
+    panel.add(this.add.rectangle(0, 0, 500, 600, 0x1c1628).setStrokeStyle(3, 0xd4af37));
+    panel.add(this.add.text(0, -250, 'ЕЖЕДНЕВНЫЙ БОНУС', { fontFamily: Core.FONT, fontSize: '28px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1));
+    panel.add(this.add.text(0, -210, 'Серия: ' + streak + ' дней', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1));
+
+    const rewards = [
+      { text: '+50 МОНЕТ', val: 50, type: 'coin' },
+      { text: '+1 ПОДСКАЗКА', val: 1, type: 'hint' },
+      { text: '+100 МОНЕТ', val: 100, type: 'coin' },
+      { text: '+1 МИКС', val: 1, type: 'mix' },
+      { text: '+150 МОНЕТ', val: 150, type: 'coin' },
+      { text: '+2 ПОДСКАЗКИ', val: 2, type: 'hint' },
+      { text: 'ДЖЕКПОТ', val: 500, type: 'jackpot' }
+    ];
+
+    const rewardIndex = (streak - 1) % 7;
+
+    rewards.forEach((r, i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      const x = (col - 1) * 140, y = -80 + row * 130;
+      const isToday = i === rewardIndex;
+      const isPassed = i < rewardIndex;
+      
+      const box = this.add.rectangle(x, y, 120, 110, isToday ? 0x2a2138 : 0x14101f)
+        .setStrokeStyle(isToday ? 3 : 2, isToday ? 0xe8c874 : 0x3a3450, isToday ? 1 : 0.5);
+      panel.add(box);
+      
+      panel.add(this.add.text(x, y - 30, 'День ' + (i + 1), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: isToday ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(1));
+      
+      const color = r.type === 'coin' ? 0xe8c874 : (r.type === 'hint' ? 0x7c5cff : 0x2ecc8f);
+      panel.add(this.add.circle(x, y + 5, 14, color).setAlpha(isPassed ? 0.3 : 1));
+      
+      panel.add(this.add.text(x, y + 38, r.text, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: isToday ? '#f5f0e6' : '#9a8fb8' }).setOrigin(0.5).setResolution(1));
+
+      if (isToday) this.tweens.add({ targets: box, scaleX: 1.05, scaleY: 1.05, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    });
+
+    const btn = this.add.rectangle(0, 220, 300, 64, 0xe8c874).setStrokeStyle(2, 0xa8842a).setInteractive({ useHandCursor: true });
+    panel.add(btn);
+    panel.add(this.add.text(0, 220, 'ЗАБРАТЬ', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(1));
+
+    btn.on('pointerdown', () => {
+      const todayReward = rewards[rewardIndex];
+      const patch = {};
+      
+      if (todayReward.type === 'coin' || todayReward.type === 'jackpot') patch.coins = Core.SDK.get('coins', 0) + todayReward.val;
+      if (todayReward.type === 'hint' || todayReward.type === 'jackpot') patch.hintsOwned = Core.SDK.get('hintsOwned', 0) + (todayReward.type === 'jackpot' ? 3 : todayReward.val);
+      if (todayReward.type === 'mix') patch.shufflesOwned = Core.SDK.get('shufflesOwned', 0) + todayReward.val;
+      
+      Core.SDK.save(patch);
+      Core.Audio.buy();
+      
+      this.tweens.add({
+        targets: [overlay, panel], alpha: 0, duration: 300,
+        onComplete: () => { overlay.destroy(); panel.destroy(); this.scene.restart(); }
+      });
+    });
+
+    panel.setScale(0.7); panel.setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 400, ease: 'Back.Out' });
   }
 
   drawAmbience(S, W, H) {
     const g = this.add.graphics();
-    const spots = [[W*0.18, H*0.22, S.glow], [W*0.85, H*0.62, S.accent], [W*0.5, H*0.95, S.daily]];
-    spots.forEach(function (sp) {
-      for (let r = 200; r > 20; r -= 36) { g.fillStyle(sp[2], 0.014); g.fillCircle(sp[0], sp[1], r); }
-    });
-    for (let i = 0; i < 16; i++) {
-      const p = this.add.circle(Math.random()*W, H + Math.random()*H, 1.5 + Math.random()*3, S.glow, 0.14);
-      this.tweens.add({ targets: p, y: -30, x: p.x + (Math.random()-0.5)*70, duration: 13000 + Math.random()*9000, repeat: -1, ease: 'Linear', onRepeat: () => { p.x = Math.random()*W; p.y = H + 20; } });
+    g.fillGradientStyle(0x141024, 0x141024, 0x0a0a10, 0x0a0a10, 1);
+    g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 15; i++) {
+      const p = this.add.circle(Math.random()*W, H + Math.random()*H, 2 + Math.random()*4, 0xffffff, 0.15);
+      this.tweens.add({ 
+        targets: p, y: -50, x: p.x + (Math.random()-0.5)*100, 
+        duration: 15000 + Math.random()*10000, repeat: -1, ease: 'Linear', 
+        onRepeat: () => { p.x = Math.random()*W; p.y = H + 20; } 
+      });
     }
   }
 
@@ -1395,26 +1765,12 @@ class MenuScene extends Phaser.Scene {
     hit.on('pointerdown', () => { window.location.href = 'https://grodt52.github.io/GRODT-Studio/'; });
   }
 
-  createStyleSwitcher(x, y, S, count) {
-    const c = this.add.container(x, y);
-    const w = 264, h = 40;
-    const bg = this.rr(w, h, 20, S.panel, 0.92, S.edge, 0.7);
-    c.add(bg);
-    const lbl = 'СТИЛЬ ' + (this.menuStyle + 1) + '/' + count + ' · ' + S.name + ' ▸';
-    c.add(this.label(0, 0, lbl, 15, S.text, {}));
-    const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
-    c.add(hit);
-    hit.on('pointerover', () => bg.setAlpha(0.75));
-    hit.on('pointerout', () => bg.setAlpha(1));
-    hit.on('pointerdown', () => { Core.Audio.select(); this.scene.restart({ menuStyle: (this.menuStyle + 1) % count }); });
-  }
-
   createAchievementsButton(x, y, S) {
     const count = Core.Achievements.count();
     const c = this.add.container(x, y);
     const bg = this.add.circle(0, 0, 30, S.panel, 0.92).setStrokeStyle(2, S.gold, 0.8);
     c.add(bg);
-    c.add(this.label(0, -1, '🏆', 24, S.text, {}));
+    c.add(this.label(0, -1, 'TOP', 16, S.text, {}));
     c.add(this.add.circle(22, -22, 12, S.edge, 1));
     c.add(this.label(22, -22, count + '', 12, '#f5f0e6', {}));
     const hit = this.add.rectangle(0, 0, 72, 72, 0xffffff, 0).setInteractive({ useHandCursor: true });
@@ -1444,7 +1800,12 @@ class MenuScene extends Phaser.Scene {
     hit.on('pointerover', () => body.setAlpha(0.9));
     hit.on('pointerout', () => { body.setAlpha(1); c.setScale(1); });
     hit.on('pointerdown', () => c.setScale(0.96));
-    hit.on('pointerup', () => { c.setScale(1); Core.Audio.unlock(); this.scene.start(GameRegistry.sceneKey, { level: level, mode: 'level' }); });
+    hit.on('pointerup', () => { 
+    c.setScale(1); 
+    Core.Audio.unlock(); 
+    if (Core.Settings.musicOn) Core.Music.start();
+    this.scene.start(GameRegistry.sceneKey, { level: level, mode: 'level' }); 
+});
     this.tweens.add({ targets: glow, alpha: 0.5, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
   }
 
@@ -1453,7 +1814,7 @@ class MenuScene extends Phaser.Scene {
     const w = 172, h = 78;
     const bg = this.rr(w, h, 16, S.panel, 0.92, S.edge, 0.6);
     c.add(bg);
-    c.add(this.label(0, -16, icon, 24, S.text, {}));
+    c.add(this.label(0, -16, icon, 16, S.text, {}));
     c.add(this.label(0, 18, text, 19, S.text, { stroke: S.stroke, strokeW: 4 }));
     const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
     c.add(hit);
@@ -1529,7 +1890,7 @@ class MenuScene extends Phaser.Scene {
     const t = this.add.text(W/2, H*0.82, msg, {
       fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: S.text,
       backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
-    }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    }).setOrigin(0.5).setDepth(1000).setResolution(1);
     this.tweens.add({ targets: t, alpha: 0, y: H*0.78, duration: 1300, delay: 900, onComplete: () => t.destroy() });
   }
 
@@ -1541,7 +1902,7 @@ class MenuScene extends Phaser.Scene {
     panel.add(this.label(0, -100, 'Сбросить прогресс?', 26, S.text, { stroke: S.stroke, strokeW: 3 }));
     panel.add(this.add.text(0, -35, 'Уровень ' + currentLevel + ' → 1\nСчёт, монеты, скины и достижения обнулятся.', {
       fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: S.soft, align: 'center', lineSpacing: 6
-    }).setOrigin(0.5).setResolution(2));
+    }).setOrigin(0.5).setResolution(1));
     const yes = this.add.rectangle(-100, 85, 170, 60, 0xe0556a).setInteractive({ useHandCursor: true });
     panel.add(yes); panel.add(this.label(-100, 85, 'СБРОСИТЬ', 18, '#f5f0e6', {}));
     yes.on('pointerdown', async () => {
@@ -1560,7 +1921,7 @@ class MenuScene extends Phaser.Scene {
     const w = 300, h = 56;
     const bg = this.rr(w, h, 16, S.panel, 0.9, S.edge, 0.6);
     c.add(bg);
-    c.add(this.label(0, 0, '📅  АРХИВ ВЫЗОВОВ', 18, S.text, { stroke: S.stroke, strokeW: 2 }));
+    c.add(this.label(0, 0, 'АРХИВ ВЫЗОВОВ', 18, S.text, { stroke: S.stroke, strokeW: 2 }));
     const hit = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
     c.add(hit);
     hit.on('pointerover', () => bg.setAlpha(0.75));
@@ -1574,7 +1935,7 @@ class MenuScene extends Phaser.Scene {
     const W = this.scale.width;
     const c = this.add.container(W / 2, 45);
     c.add(this.rr(230, 36, 18, 0x241a3a, 0.95, 0x7c5cff, 0.9));
-    c.add(this.label(0, 0, '🧪 ОБСИДИАН · ТЕСТ', 14, '#e8c874', {}));
+    c.add(this.label(0, 0, 'ОБСИДИАН · ТЕСТ', 14, '#e8c874', {}));
   }
 }
 
@@ -1589,10 +1950,10 @@ class AchievementsScene extends Phaser.Scene {
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 10, -1);
 
-    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     back.on('pointerdown', () => this.scene.start('Menu'));
-    this.add.text(W / 2, 45, 'ДОСТИЖЕНИЯ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2);
-    this.countText = this.add.text(W - 20, 45, '', { fontFamily: Core.FONT, fontSize: '20px', fontStyle: '400', color: '#e8c874' }).setOrigin(1, 0.5).setResolution(2);
+    this.add.text(W / 2, 45, 'ДОСТИЖЕНИЯ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(1);
+    this.countText = this.add.text(W - 20, 45, '', { fontFamily: Core.FONT, fontSize: '20px', fontStyle: '400', color: '#e8c874' }).setOrigin(1, 0.5).setResolution(1);
 
     this.maskTop = 90;
     this.listY = 140;
@@ -1683,11 +2044,11 @@ class AchievementsScene extends Phaser.Scene {
       card.lineStyle(2, done ? this.tierColor(ic[1]) : 0x3a3450, done ? 0.9 : 0.5); card.strokeRoundedRect(-rowW / 2, -rowH / 2, rowW, rowH, 14);
       c.add(card);
       this.drawAchBadge(c, -rowW / 2 + 48, 0, ic[0], ic[1], done);
-      c.add(this.add.text(-rowW / 2 + 92, -22, a.title, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: done ? '#e8c874' : '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
-      c.add(this.add.text(-rowW / 2 + 92, -2, a.desc, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0, 0.5).setResolution(2));
+      c.add(this.add.text(-rowW / 2 + 92, -22, a.title, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: done ? '#e8c874' : '#f5f0e6' }).setOrigin(0, 0.5).setResolution(1));
+      c.add(this.add.text(-rowW / 2 + 92, -2, a.desc, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0, 0.5).setResolution(1));
       const rewardLine = rewarded ? '✓ ' + rewardStr : ('Награда: ' + rewardStr);
-      c.add(this.add.text(-rowW / 2 + 92, 18, rewardLine, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: rewarded ? '#7c5cff' : '#e8c874' }).setOrigin(0, 0.5).setResolution(2));
-      c.add(this.add.text(rowW / 2 - 20, -22, (done ? '✓ ' : '') + p.cur + '/' + p.goal, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: done ? '#e8c874' : '#c9c2d8' }).setOrigin(1, 0.5).setResolution(2));
+      c.add(this.add.text(-rowW / 2 + 92, 18, rewardLine, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: rewarded ? '#7c5cff' : '#e8c874' }).setOrigin(0, 0.5).setResolution(1));
+      c.add(this.add.text(rowW / 2 - 20, -22, (done ? '✓ ' : '') + p.cur + '/' + p.goal, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: done ? '#e8c874' : '#c9c2d8' }).setOrigin(1, 0.5).setResolution(1));
       const barX = -rowW / 2 + 92, barY = 32, barW = rowW - 180, barH = 8;
       const track = this.add.graphics(); track.fillStyle(0x0a0a10, 1); track.fillRoundedRect(barX, barY - barH / 2, barW, barH, 4); c.add(track);
       const fillW = Math.max(0, Math.min(1, p.cur / p.goal)) * barW;
@@ -1727,20 +2088,18 @@ class LevelMapScene extends Phaser.Scene {
     bg.fillGradientStyle(0x0a0a10, 0x0a0a10, 0x161022, 0x161022, 1);
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 14, -1);
-    const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6'
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '54.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     back.on('pointerdown', () => this.scene.start('Menu'));
-    this.add.text(W / 2, 45, 'УРОВНИ', Core.TextStyles.heading(30)).setOrigin(0.5);
+    this.add.text(W / 2, 45, 'УРОВНИ', Core.TextStyles.heading(30)).setOrigin(0.5).setResolution(1);
     this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 20, iconSize: 22, anchor: 'right' });
     this.gridContainer = this.add.container(0, 0);
-    this.pageText = this.add.text(W / 2, H - 60, '', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5);
+    this.pageText = this.add.text(W / 2, H - 60, '', Core.TextStyles.soft(16, '#c9c2d8')).setOrigin(0.5).setResolution(1);
     this.prevBtn = this.add.rectangle(60, H - 60, 60, 50, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.6);
-    this.add.text(60, H - 60, '‹', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5);
+    this.add.text(60, H - 60, '‹', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5).setResolution(1);
     this.prevBtn.setInteractive({ useHandCursor: true });
     this.prevBtn.on('pointerdown', () => { if (this.currentPage > 0) { this.currentPage--; this.renderPage(); } });
     this.nextBtn = this.add.rectangle(W - 60, H - 60, 60, 50, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.6);
-    this.add.text(W - 60, H - 60, '›', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5);
+    this.add.text(W - 60, H - 60, '›', { fontFamily: Core.FONT, fontSize: '41.6px', fontStyle: '900', color: '#f5f0e6' }).setOrigin(0.5).setResolution(1);
     this.nextBtn.setInteractive({ useHandCursor: true });
     this.nextBtn.on('pointerdown', () => { this.currentPage++; this.renderPage(); });
     this.renderPage();
@@ -1776,24 +2135,24 @@ class LevelMapScene extends Phaser.Scene {
       cell.add(bg);
       if (isCurrent) this.tweens.add({ targets: bg, alpha: 0.75, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       if (locked) {
-        cell.add(this.add.text(0, -8, '🔒', { fontSize: '34px' }).setOrigin(0.5).setAlpha(0.45));
+        cell.add(this.add.text(0, -8, 'LOCK', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#4a4460' }).setOrigin(0.5).setResolution(1));
       } else {
         cell.add(this.add.text(0, -34, String(lvl), {
           fontFamily: Core.FONT, fontSize: '38px', fontStyle: '400',
           color: isCurrent ? '#e8c874' : (done ? '#f5f0e6' : '#c9c2d8'),
           stroke: '#000000', strokeThickness: 3
-        }).setOrigin(0.5).setResolution(2));
+        }).setOrigin(0.5).setResolution(1));
         for (let s = 0; s < 3; s++) {
           const on = s < stars;
           cell.add(this.add.text(-30 + s * 30, 8, '★', {
             fontFamily: Core.FONT, fontSize: '22px', fontStyle: '400',
             color: on ? '#e8c874' : '#3a3450'
-          }).setOrigin(0.5).setResolution(2));
+          }).setOrigin(0.5).setResolution(1));
         }
         cell.add(this.add.text(0, 44, record ? ('РЕКОРД ★ ' + record) : 'РЕКОРДА НЕТ', {
           fontFamily: Core.FONT, fontSize: record ? '14px' : '12px', fontStyle: '400',
           color: record ? '#e8c874' : '#6f6785'
-        }).setOrigin(0.5).setResolution(2));
+        }).setOrigin(0.5).setResolution(1));
         bg.setInteractive({ useHandCursor: true });
         bg.on('pointerover', () => bg.setFillStyle(0x2a2138));
         bg.on('pointerout', () => bg.setFillStyle(bgColor));
@@ -1824,18 +2183,11 @@ class ShopScene extends Phaser.Scene {
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 10, -1);
 
-    const back = this.add.text(20, 45, '←', {
-      fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6'
-    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     back.on('pointerdown', () => this.scene.start('Menu'));
-    this.add.text(W / 2, 45, 'МАГАЗИН', {
-      fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6',
-      stroke: '#000000', strokeThickness: 4
-    }).setOrigin(0.5).setResolution(2);
+    this.add.text(W / 2, 45, 'МАГАЗИН', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(1);
     this.coinLabel = Core.coinLabel(this, W - 20, 45, Core.SDK.get('coins', 0), { fontSize: 22, iconSize: 24, anchor: 'right' });
-    this.invText = this.add.text(W / 2, 92, 'Подсказок в инвентаре: ' + Core.SDK.get('hintsOwned', 0), {
-      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8'
-    }).setOrigin(0.5).setResolution(2);
+    this.invText = this.add.text(W / 2, 92, 'Подсказок в инвентаре: ' + Core.SDK.get('hintsOwned', 0), { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1);
 
     this.content = this.add.container(0, 0);
     this.tabs = {};
@@ -1847,7 +2199,7 @@ class ShopScene extends Phaser.Scene {
 
   makeCategoryTab(x, y, text, key) {
     const bg = this.add.rectangle(x, y, 200, 48, 0x1c1628).setStrokeStyle(2, 0x4a4460, 0.7).setInteractive({ useHandCursor: true });
-    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2);
+    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1);
     bg.on('pointerdown', () => { Core.Audio.select(); this.setShopTab(key); });
     return { bg, lbl };
   }
@@ -1868,9 +2220,7 @@ class ShopScene extends Phaser.Scene {
 
   renderConsumables() {
     const W = this.scale.width;
-    this.content.add(this.add.text(W / 2, 205, 'Подсказки показывают лучший ход. Тратятся на уровнях и в вызовах.', {
-      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 }
-    }).setOrigin(0.5).setResolution(2));
+    this.content.add(this.add.text(W / 2, 205, 'Подсказки показывают лучший ход. Тратятся на уровнях и в вызовах.', { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 } }).setOrigin(0.5).setResolution(1));
     this.createHintCard(W / 2 - 220, 320, 1, 30);
     this.createHintCard(W / 2, 320, 3, 80, 'ВЫГОДНО');
     this.createHintCard(W / 2 + 220, 320, 10, 240, 'НАБОР');
@@ -1881,16 +2231,14 @@ class ShopScene extends Phaser.Scene {
     const w = 190, h = 160;
     const bg = this.add.rectangle(0, 0, w, h, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, 0xd4af37, 0.75);
     c.add(bg);
-    c.add(this.add.text(0, -48, '💡', { fontSize: '42px' }).setOrigin(0.5));
-    c.add(this.add.text(0, -2, '+' + count + ' подсказк' + (count === 1 ? 'а' : (count < 5 ? 'и' : 'ок')), {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', align: 'center', wordWrap: { width: w - 24 }
-    }).setOrigin(0.5).setResolution(2));
+    c.add(this.add.text(0, -48, 'HINT', { fontFamily: Core.FONT, fontSize: '20px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1));
+    c.add(this.add.text(0, -2, '+' + count + ' подсказк' + (count === 1 ? 'а' : (count < 5 ? 'и' : 'ок')), { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', align: 'center', wordWrap: { width: w - 24 } }).setOrigin(0.5).setResolution(1));
     const btn = this.add.rectangle(0, 48, 150, 48, 0x241a3a).setStrokeStyle(2, 0xd4af37, 1).setInteractive({ useHandCursor: true });
     c.add(btn);
     c.add(Core.coinLabel(this, 0, 48, price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
     if (badge) {
       c.add(this.add.rectangle(58, -66, 84, 26, 0x7c5cff).setOrigin(0.5));
-      c.add(this.add.text(58, -66, badge, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setResolution(2));
+      c.add(this.add.text(58, -66, badge, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setResolution(1));
     }
     btn.on('pointerover', () => btn.setAlpha(0.85));
     btn.on('pointerout', () => btn.setAlpha(1));
@@ -1900,9 +2248,7 @@ class ShopScene extends Phaser.Scene {
 
   renderUpgrades() {
     const W = this.scale.width;
-    this.content.add(this.add.text(W / 2, 205, 'Постоянные улучшения. Покупаются один раз и работают всегда.', {
-      fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 }
-    }).setOrigin(0.5).setResolution(2));
+    this.content.add(this.add.text(W / 2, 205, 'Постоянные улучшения. Покупаются один раз и работают всегда.', { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#9a8fb8', align: 'center', wordWrap: { width: W - 100 } }).setOrigin(0.5).setResolution(1));
     this.createUpgradeCard(280, 'coinBonus', 'КОШЕЛЬ', '+10 монет за каждую победу', 400);
     this.createUpgradeCard(410, 'dailyBonus', 'ДНЕВНОЙ БОНУС', '+50 монет за первое прохождение дня', 500);
     this.createUpgradeCard(540, 'starShield', 'ЩИТ ЗВЁЗД', 'Первая подсказка/отмена/шаффл не снижают звёзды', 800);
@@ -1914,17 +2260,13 @@ class ShopScene extends Phaser.Scene {
     const c = this.add.container(W / 2, y);
     const bg = this.add.rectangle(0, 0, W - 80, 110, 0x1c1628).setStrokeStyle(2, owned ? 0xd4af37 : 0x4a4460, owned ? 1 : 0.65);
     c.add(bg);
-    c.add(this.add.text(-(W - 80) / 2 + 26, -26, name, {
-      fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: owned ? '#e8c874' : '#f5f0e6'
-    }).setOrigin(0, 0.5).setResolution(2));
-    c.add(this.add.text(-(W - 80) / 2 + 26, 14, desc, {
-      fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#9a8fb8', wordWrap: { width: W - 320 }
-    }).setOrigin(0, 0.5).setResolution(2));
+    c.add(this.add.text(-(W - 80) / 2 + 26, -26, name, { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: owned ? '#e8c874' : '#f5f0e6' }).setOrigin(0, 0.5).setResolution(1));
+    c.add(this.add.text(-(W - 80) / 2 + 26, 14, desc, { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#9a8fb8', wordWrap: { width: W - 320 } }).setOrigin(0, 0.5).setResolution(1));
     const btnX = (W - 80) / 2 - 100;
     if (owned) {
       const b = this.add.rectangle(btnX, 0, 150, 52, 0xe8c874).setStrokeStyle(2, 0xa8842a, 1);
       c.add(b);
-      c.add(this.add.text(btnX, 0, '✓ АКТИВНО', { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(2));
+      c.add(this.add.text(btnX, 0, '✓ АКТИВНО', { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(1));
     } else {
       const b = this.add.rectangle(btnX, 0, 150, 52, 0x241a3a).setStrokeStyle(2, 0xd4af37, 1).setInteractive({ useHandCursor: true });
       c.add(b);
@@ -1955,7 +2297,7 @@ class ShopScene extends Phaser.Scene {
     this.ballTab = this.makeSubTab(W / 2 + 90, 210, 'ШАРЫ', 'balls');
     this.content.add([this.tubeTab.bg, this.tubeTab.lbl, this.ballTab.bg, this.ballTab.lbl]);
     this.updateSubTabs();
-    const startY = 280, rowH = 115;
+    const startY = 280, rowH = 82;
     if (this.skinTab === 'tubes') {
       const owned = Core.SDK.get('ownedSkins', ['classic']);
       const current = Core.SDK.get('currentSkin', 'classic');
@@ -1969,7 +2311,7 @@ class ShopScene extends Phaser.Scene {
 
   makeSubTab(x, y, text, key) {
     const bg = this.add.rectangle(x, y, 160, 44, 0x1c1628).setStrokeStyle(2, 0x4a4460, 0.7).setInteractive({ useHandCursor: true });
-    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2);
+    const lbl = this.add.text(x, y, text, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1);
     bg.on('pointerdown', () => { Core.Audio.select(); this.setSkinTab(key); });
     return { bg, lbl };
   }
@@ -1997,7 +2339,7 @@ class ShopScene extends Phaser.Scene {
       .setStrokeStyle(2, isCurrent ? 0xd4af37 : (exclusive ? 0x7c5cff : 0x4a4460), isCurrent ? 1 : 0.65);
     c.add(bg);
     const g = this.add.graphics();
-    const tx = -W / 2 + 80, ty = 0, tw = 40, th = 80, r = 10;
+    const tx = -W / 2 + 80, ty = 0, tw = 40, th = 50, r = 10;
     const x0 = tx - tw / 2, y0 = ty - th / 2;
     g.fillStyle(skin.fill, skin.fillAlpha);
     g.lineStyle(skin.lineWidth, skin.stroke, skin.strokeAlpha);
@@ -2011,24 +2353,20 @@ class ShopScene extends Phaser.Scene {
     g.closePath();
     g.strokePath(); g.fillPath();
     c.add(g);
-    c.add(this.add.text(-W / 2 + 140, -18, skin.name, { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+    c.add(this.add.text(-W / 2 + 140, -14, skin.name, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(1));
     const hasPerk = skin.perk && Object.keys(skin.perk).length > 0;
     const sub = skin.perkDesc || 'Базовый стиль';
-    c.add(this.add.text(-W / 2 + 140, 14, sub, { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(2));
-    if (exclusive) {
-      c.add(this.add.text(-W / 2 + 140, 36, testUnlock ? 'ТЕСТОВЫЙ ДОСТУП' : 'Награда за ЗОЛОТО месяца', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0, 0.5).setResolution(2));
-    }
-    const btnX = W / 2 - 120, btnW = 165, btnH = 54;
+    c.add(this.add.text(-W / 2 + 140, 10, sub, { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(1));
+    const btnX = W / 2 - 120, btnW = 140, btnH = 44;
     let fill, border, label = '', labelColor = '#f5f0e6', clickFn = null, showPrice = false;
     if (isCurrent) { fill = 0xe8c874; border = 0xa8842a; label = '✓ АКТИВЕН'; labelColor = '#0a0a10'; }
     else if (isOwned) { fill = 0x7c5cff; border = 0xe8c874; label = 'НАДЕТЬ'; clickFn = () => this.selectSkin(key); }
-    else if (exclusive) { fill = 0x241a3a; border = 0x7c5cff; label = '🔒 НАГРАДА'; labelColor = '#e8c874'; clickFn = () => this.showToast('Открой в архиве вызовов: ЗОЛОТО месяца'); }
+    else if (exclusive) { fill = 0x241a3a; border = 0x7c5cff; label = 'ЗАКРЫТО'; labelColor = '#e8c874'; clickFn = () => this.showToast('ЗОЛОТО месяца'); }
     else { fill = 0x241a3a; border = 0xd4af37; showPrice = true; clickFn = () => this.buySkin(key, skin.price); }
-    const shadow = this.add.rectangle(btnX, 4, btnW, btnH, 0x000000, 0.4).setOrigin(0.5);
     const btnBg = this.add.rectangle(btnX, 0, btnW, btnH, fill).setOrigin(0.5).setStrokeStyle(2, border, 1);
-    c.add([shadow, btnBg]);
-    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
-    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(2));
+    c.add(btnBg);
+    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
+    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(1));
     if (clickFn) {
       btnBg.setInteractive({ useHandCursor: true });
       btnBg.on('pointerover', () => btnBg.setAlpha(0.88));
@@ -2045,22 +2383,21 @@ class ShopScene extends Phaser.Scene {
     const isCurrent = current === key;
     const bg = this.add.rectangle(0, 0, W - 60, height, 0x1c1628).setOrigin(0.5).setStrokeStyle(2, isCurrent ? 0xd4af37 : 0x4a4460, isCurrent ? 1 : 0.65);
     c.add(bg);
-    const preview = Core.renderBall(this, 32, 0x4a90e2, key);
+    const preview = Core.renderBall(this, 26, 0x4a90e2, key);
     preview.setPosition(-W / 2 + 80, 0);
     c.add(preview);
-    c.add(this.add.text(-W / 2 + 140, -18, skin.name, { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(2));
+    c.add(this.add.text(-W / 2 + 140, -14, skin.name, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setResolution(1));
     const hasPerk = skin.perk && Object.keys(skin.perk).length > 0;
-    c.add(this.add.text(-W / 2 + 140, 14, skin.perkDesc || 'Базовый стиль', { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(2));
-    const btnX = W / 2 - 120, btnW = 165, btnH = 54;
+    c.add(this.add.text(-W / 2 + 140, 10, skin.perkDesc || 'Базовый стиль', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: hasPerk ? '#e8c874' : '#6f6785', wordWrap: { width: 300 } }).setOrigin(0, 0.5).setResolution(1));
+    const btnX = W / 2 - 120, btnW = 140, btnH = 44;
     let fill, border, label = '', labelColor = '#f5f0e6', clickFn = null, showPrice = false;
     if (isCurrent) { fill = 0xe8c874; border = 0xa8842a; label = '✓ АКТИВЕН'; labelColor = '#0a0a10'; }
     else if (isOwned) { fill = 0x7c5cff; border = 0xe8c874; label = 'НАДЕТЬ'; clickFn = () => this.selectBallSkin(key); }
     else { fill = 0x241a3a; border = 0xd4af37; showPrice = true; clickFn = () => this.buyBallSkin(key, skin.price); }
-    const shadow = this.add.rectangle(btnX, 4, btnW, btnH, 0x000000, 0.4).setOrigin(0.5);
     const btnBg = this.add.rectangle(btnX, 0, btnW, btnH, fill).setOrigin(0.5).setStrokeStyle(2, border, 1);
-    c.add([shadow, btnBg]);
-    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 18, iconSize: 20, anchor: 'center' }));
-    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '16px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(2));
+    c.add(btnBg);
+    if (showPrice) c.add(Core.coinLabel(this, btnX, 0, skin.price, { fontSize: 16, iconSize: 18, anchor: 'center' }));
+    else c.add(this.add.text(btnX, 0, label, { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: labelColor }).setOrigin(0.5).setResolution(1));
     if (clickFn) {
       btnBg.setInteractive({ useHandCursor: true });
       btnBg.on('pointerover', () => btnBg.setAlpha(0.88));
@@ -2122,10 +2459,7 @@ class ShopScene extends Phaser.Scene {
 
   showToast(msg) {
     const W = this.scale.width, H = this.scale.height;
-    const t = this.add.text(W / 2, H - 70, msg, {
-      fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6',
-      backgroundColor: '#000000cc', padding: { x: 16, y: 10 }
-    }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    const t = this.add.text(W / 2, H - 70, msg, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', backgroundColor: '#000000cc', padding: { x: 16, y: 10 } }).setOrigin(0.5).setDepth(1000).setResolution(1);
     this.tweens.add({ targets: t, alpha: 0, y: H - 100, duration: 1400, delay: 900, onComplete: () => t.destroy() });
   }
 }
@@ -2156,22 +2490,23 @@ class DailyArchiveScene extends Phaser.Scene {
     bg.fillRect(0, 0, W, H);
     Core.Juice.ambient(this, 10, -1);
 
-    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    const back = this.add.text(20, 45, '←', { fontFamily: Core.FONT, fontSize: '42px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     back.on('pointerdown', () => this.scene.start('Menu'));
-    this.add.text(W / 2, 45, 'АРХИВ ВЫЗОВОВ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(2);
-    this.trophyText = this.add.text(W - 20, 45, '🏆 0', { fontFamily: Core.FONT, fontSize: '22px', fontStyle: '400', color: '#e8c874' }).setOrigin(1, 0.5).setResolution(2);
-
-    this.prevBtn = this.add.text(W / 2 - 215, 108, '‹', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    this.monthText = this.add.text(W / 2, 108, '', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2);
-    this.nextBtn = this.add.text(W / 2 + 215, 108, '›', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.add.text(W / 2, 45, 'АРХИВ ВЫЗОВОВ', { fontFamily: Core.FONT, fontSize: '30px', fontStyle: '400', color: '#f5f0e6', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5).setResolution(1);
+    
+    // УБРАН TOP 0
+    
+    this.prevBtn = this.add.text(W / 2 - 215, 108, '‹', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setResolution(1);
+    this.monthText = this.add.text(W / 2, 108, '', { fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1);
+    this.nextBtn = this.add.text(W / 2 + 215, 108, '›', { fontFamily: Core.FONT, fontSize: '40px', fontStyle: '400', color: '#f5f0e6' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setResolution(1);
     this.prevBtn.on('pointerdown', () => this.changeMonth(-1));
     this.nextBtn.on('pointerdown', () => this.changeMonth(1));
 
-    this.progressText = this.add.text(W / 2, 158, '', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setResolution(2);
+    this.progressText = this.add.text(W / 2, 158, '', { fontFamily: Core.FONT, fontSize: '24px', fontStyle: '400', color: '#e8c874', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setResolution(1);
     this.progressContainer = this.add.container(0, 0);
     this.gridContainer = this.add.container(0, 0);
 
-    this.add.text(W / 2, H - 34, '★ пройдено · фиолетовый — доступно · 🔒 будущее', { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#6f6785' }).setOrigin(0.5).setResolution(2);
+    this.add.text(W / 2, H - 34, '★ пройдено · фиолетовый — доступно · LOCK — будущее', { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#6f6785' }).setOrigin(0.5).setResolution(1);
 
     this.renderMonth();
     this.cameras.main.fadeIn(240, 0, 0, 0);
@@ -2197,9 +2532,7 @@ class DailyArchiveScene extends Phaser.Scene {
     const hist = Core.SDK.get('dailyHistory', {});
     const rewards = Core.SDK.get('monthlyRewards', {});
     const claimed = this.claimedTiers();
-    let goldMonths = 0;
-    Object.keys(rewards).forEach(k => { const r = rewards[k]; const cl = r.claimed || (r.tier ? [String(r.tier).toLowerCase()] : []); if (cl.indexOf('gold') >= 0) goldMonths++; });
-    this.trophyText.setText('🏆 ' + goldMonths);
+    
     this.monthText.setText('СЕЗОН ' + this.seasonNum(this.monthKey) + ' · ' + pfMonthLabel(this.monthKey));
     this.progressText.setText('★ ' + stars + ' / 90');
     this.prevBtn.setAlpha(this.monthKey <= this.seasonStart ? 0.3 : 1);
@@ -2215,8 +2548,8 @@ class DailyArchiveScene extends Phaser.Scene {
       const reached = stars >= t.need;
       const isClaimed = claimed.indexOf(t.key) >= 0;
       this.progressContainer.add(this.add.circle(mx, barY, 9, isClaimed || reached ? t.color : 0x241a3a).setStrokeStyle(2, isClaimed ? 0xf5f0e6 : (reached ? t.color : 0x3a3450), 1));
-      if (isClaimed) this.progressContainer.add(this.add.text(mx, barY, '✓', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5));
-      this.progressContainer.add(this.add.text(mx, barY + 24, t.need + '★', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: reached ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(2));
+      if (isClaimed) this.progressContainer.add(this.add.text(mx, barY, '✓', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#0a0a10' }).setOrigin(0.5).setResolution(1));
+      this.progressContainer.add(this.add.text(mx, barY + 24, t.need + '★', { fontFamily: Core.FONT, fontSize: '12px', fontStyle: '400', color: reached ? '#e8c874' : '#6f6785' }).setOrigin(0.5).setResolution(1));
     });
 
     this.gridContainer.removeAll(true);
@@ -2226,12 +2559,20 @@ class DailyArchiveScene extends Phaser.Scene {
     const cellW = 88, cellH = 96, gap = 8;
     const totalW = 7 * cellW + 6 * gap;
     const startX = (W - totalW) / 2 + cellW / 2;
-    const headerY = 268, gridY = 318;
+    const headerY = 264, gridY = 334;
     const names = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+    const headPlate = this.add.graphics();
+    headPlate.fillStyle(0x241a3a, 0.9);
+    headPlate.fillRoundedRect(startX - cellW / 2 - 6, headerY - 21, totalW + 12, 42, 10);
+    headPlate.lineStyle(1.5, 0x4a4460, 0.9);
+    headPlate.strokeRoundedRect(startX - cellW / 2 - 6, headerY - 21, totalW + 12, 42, 10);
+    this.gridContainer.add(headPlate);
     for (let col = 0; col < 7; col++) {
       this.gridContainer.add(this.add.text(startX + col * (cellW + gap), headerY, names[col], {
-        fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: col >= 5 ? '#e8c874' : '#6f6785'
-      }).setOrigin(0.5).setResolution(2));
+        fontFamily: Core.FONT, fontSize: '21px', fontStyle: '400',
+        color: col >= 5 ? '#e8c874' : '#f2eefc',
+        stroke: '#000000', strokeThickness: 3
+      }).setOrigin(0.5).setResolution(1));
     }
     const today = todayStr();
     const totalCells = firstWeekday + days;
@@ -2255,18 +2596,18 @@ class DailyArchiveScene extends Phaser.Scene {
       else if (future) { fill = 0x14101f; border = 0x3a3450; borderAlpha = 0.3; numColor = '#4a4460'; }
       const bg = this.add.rectangle(0, 0, cellW, cellH, fill).setStrokeStyle(2, border, borderAlpha);
       c.add(bg);
-      c.add(this.add.text(0, -32, String(day), { fontFamily: Core.FONT, fontSize: '23px', fontStyle: '400', color: numColor }).setOrigin(0.5).setResolution(2));
+      c.add(this.add.text(0, -32, String(day), { fontFamily: Core.FONT, fontSize: '23px', fontStyle: '400', color: numColor }).setOrigin(0.5).setResolution(1));
       if (done) {
         const bs = rec.bestStars || 0;
-        c.add(this.add.text(0, -4, '★'.repeat(bs) + '☆'.repeat(3 - bs), { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(2));
-        c.add(this.add.text(0, 24, String(rec.bestScore || 0), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(2));
+        c.add(this.add.text(0, -4, '★'.repeat(bs) + '☆'.repeat(3 - bs), { fontFamily: Core.FONT, fontSize: '15px', fontStyle: '400', color: '#e8c874' }).setOrigin(0.5).setResolution(1));
+        c.add(this.add.text(0, 24, String(rec.bestScore || 0), { fontFamily: Core.FONT, fontSize: '13px', fontStyle: '400', color: '#9a8fb8' }).setOrigin(0.5).setResolution(1));
       } else if (future) {
-        c.add(this.add.text(0, 6, '🔒', { fontSize: '20px' }).setOrigin(0.5).setAlpha(0.4));
+        c.add(this.add.text(0, 6, 'LOCK', { fontFamily: Core.FONT, fontSize: '14px', fontStyle: '400', color: '#4a4460' }).setOrigin(0.5).setResolution(1));
       } else if (isToday) {
-        c.add(this.add.text(0, 6, 'СЕГОДНЯ', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setResolution(2));
+        c.add(this.add.text(0, 6, 'СЕГОДНЯ', { fontFamily: Core.FONT, fontSize: '11px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setResolution(1));
         this.tweens.add({ targets: bg, alpha: 0.65, duration: 850, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       } else {
-        c.add(this.add.text(0, 6, '▶', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setAlpha(0.75).setResolution(2));
+        c.add(this.add.text(0, 6, '▶', { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#7c5cff' }).setOrigin(0.5).setAlpha(0.75).setResolution(1));
       }
       if (!future) {
         bg.setInteractive({ useHandCursor: true });
@@ -2280,13 +2621,12 @@ class DailyArchiveScene extends Phaser.Scene {
 
   showToast(msg) {
     const W = this.scale.width, H = this.scale.height;
-    const t = this.add.text(W / 2, H - 70, msg, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', backgroundColor: '#000000cc', padding: { x: 16, y: 10 } }).setOrigin(0.5).setDepth(1000).setResolution(2);
+    const t = this.add.text(W / 2, H - 70, msg, { fontFamily: Core.FONT, fontSize: '18px', fontStyle: '400', color: '#f5f0e6', backgroundColor: '#000000cc', padding: { x: 16, y: 10 } }).setOrigin(0.5).setDepth(1000).setResolution(1);
     this.tweens.add({ targets: t, alpha: 0, y: H - 100, duration: 1400, delay: 900, onComplete: () => t.destroy() });
   }
 }
 
 const GameRegistry = { title: 'Ball Sort', sceneKey: 'BallSort' };
-
 const MAX_TUBE = 4;
 
 const Logic = {
@@ -2315,11 +2655,8 @@ const Logic = {
   }
 };
 
-
 Core.Solver = {
-  key: function (t) {
-    return t.map(function (x) { return x.join(','); }).sort().join('|');
-  },
+  key: function (t) { return t.map(function (x) { return x.join(','); }).sort().join('|'); },
   shortest: function (tubes, cap) {
     cap = cap || 12000;
     const start = Logic.clone(tubes);
@@ -2368,9 +2705,7 @@ function isSolvable(tubes, maxDepth) {
   const start = Date.now();
   const queue = [Logic.clone(tubes)];
   const visited = new Set();
-  
   function keyOf(t) { return t.map(x => x.join(',')).join('|'); }
-  
   while (queue.length > 0) {
     if (Date.now() - start > 400) return true; 
     const current = queue.shift();
@@ -2379,7 +2714,6 @@ function isSolvable(tubes, maxDepth) {
     if (visited.has(k)) continue;
     visited.add(k);
     if (visited.size > 2000) return true; 
-
     for (let a = 0; a < current.length; a++) {
       for (let b = 0; b < current.length; b++) {
         if (!Logic.canPour(current, a, b)) continue;
@@ -2421,7 +2755,6 @@ function generateLevel(level, seed) {
   const tubes = [];
   for (let i = 0; i < colors; i++) tubes.push(balls.slice(i * MAX_TUBE, (i + 1) * MAX_TUBE));
   tubes.push([]); tubes.push([]);
-  
   for(let k=0; k<20; k++) {
      const from = Math.floor(rng() * tubes.length);
      const to = Math.floor(rng() * tubes.length);
@@ -2470,30 +2803,55 @@ class BallSortScene extends BaseGameScene {
       this.tubeGeom.push({ x: startX + col * (tubeW + hGap), y: startY + row * (tubeH + vGap), w: tubeW, h: tubeH });
     }
   }
+  
   renderTubes() {
-    this.tubeGfx = []; this.ballGfx = []; this.zones = [];
+    this.tubeGfx = []; 
+    this.ballGfx = []; 
+    
     for (let i = 0; i < this.tubes.length; i++) {
       this.drawTube(i, false);
       this.ballGfx[i] = [];
-      for (let j = 0; j < this.tubes[i].length; j++) this.ballGfx[i].push(this.makeBall(i, j));
+      for (let j = 0; j < this.tubes[i].length; j++) {
+        this.ballGfx[i].push(this.makeBall(i, j));
+      }
     }
+
     for (let i = 0; i < this.tubes.length; i++) {
       const g = this.tubeGeom[i];
       const objs = [this.tubeGfx[i]].concat(this.ballGfx[i]);
-      objs.forEach(function (o) { o.setAlpha(0); o.y = o.y + 60; });
-      this.tweens.add({ targets: objs, alpha: 1, y: '-=60', duration: 420, delay: i * 55, ease: 'Back.Out' });
+      objs.forEach(function (o) { 
+        o.setAlpha(0); 
+        o.y = o.y + 60; 
+      });
+      this.tweens.add({ 
+        targets: objs, 
+        alpha: 1, 
+        y: '-=60', 
+        duration: 420, 
+        delay: i * 55, 
+        ease: 'Back.Out' 
+      });
+    }
+
+    for (let i = 0; i < this.tubes.length; i++) {
+      const g = this.tubeGeom[i];
+      const zone = this.add.zone(g.x, g.y, g.w + 60, g.h + 60)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(100);
       
-      const zone = this.add.zone(g.x, g.y, g.w + 40, g.h + 40).setInteractive({ useHandCursor: true });
-      zone.on('pointerdown', () => this.onTubeClick(i));
-      this.zones.push(zone);
+      zone.on('pointerdown', () => {
+        this.onTubeClick(i);
+      });
     }
   }
+
   drawTube(i, selected) {
     if (this.tubeGfx[i]) this.tubeGfx[i].destroy();
     const g = this.tubeGeom[i];
     const x0 = g.x - g.w / 2, y0 = g.y - g.h / 2, r = 14;
     const s = this.skin;
-    const gfx = this.add.graphics();
+    const gfx = this.add.graphics().setDepth(0);
+
     if (selected) {
       gfx.fillStyle(s.activeFill, s.activeFillAlpha);
       gfx.lineStyle(s.lineWidth + 1, s.activeStroke, 0.95);
@@ -2510,6 +2868,11 @@ class BallSortScene extends BaseGameScene {
     gfx.lineTo(x0 + g.w, y0);
     gfx.closePath();
     gfx.strokePath(); gfx.fillPath();
+    
+    // ВНУТРЕННИЙ БЛИК КОЛБЫ (Эффект стекла)
+    gfx.fillStyle(0xffffff, 0.08);
+    gfx.fillRoundedRect(x0 + 5, y0 + 10, g.w*0.3, g.h-20, 10);
+
     this.tubeGfx[i] = gfx;
   }
   createSelectionGlow(i) {
@@ -2532,6 +2895,7 @@ class BallSortScene extends BaseGameScene {
     const color = Core.PALETTE[this.tubes[tubeIdx][idx] % Core.PALETTE.length];
     const c = Core.renderBall(this, 26, color, this.ballSkin || 'classic');
     c.setPosition(pos.x, pos.y);
+    c.setDepth(5);
     return c;
   }
   onTubeClick(i) {
@@ -2555,8 +2919,8 @@ class BallSortScene extends BaseGameScene {
         this.clearSelectionGlow();
         this.pour(from, to, true, true);
       } else {
-        Core.Audio.error(); Core.Juice.vibrate(30);
-        this.cameras.main.shake(180, 0.006);
+        Core.Audio.error(); Core.Feel.Haptics.error();
+        Core.Feel.punch(this, 0.006);
         this.shake(to);
         this.combo = 0; this.updateComboIndicator();
         this.drawTube(from, false); this.liftTop(from, false);
@@ -2625,7 +2989,7 @@ class BallSortScene extends BaseGameScene {
       const label = this.add.text(g.x, g.y - g.h / 2 - 32, '★ +50', {
         fontFamily: Core.FONT, fontSize: '46.8px', fontStyle: '900', color: '#e8c874',
         stroke: '#000000', strokeThickness: 5
-      }).setOrigin(0.5).setDepth(1500).setScale(0);
+      }).setOrigin(0.5).setDepth(1500).setScale(0).setResolution(1);
       this.tweens.add({ targets: label, scale: 1, duration: 350, ease: 'Back.Out' });
       this.tweens.add({ targets: label, alpha: 0, y: label.y - 90, duration: 900, delay: 500, onComplete: () => label.destroy() });
     }
@@ -2654,7 +3018,7 @@ class BallSortScene extends BaseGameScene {
         targets: ball, x: target.x, y: target.y, duration: 280, delay: k * 80, ease: 'Cubic.Out',
         onComplete: function () {
           trail.remove();
-          self.tweens.add({ targets: ball, scaleX: 1.2, scaleY: 0.8, duration: 100, yoyo: true, ease: 'Quad.Out' });
+          Core.Feel.Ball.land(self, ball);
           Core.Juice.flash(self, target.x, target.y, 26);
           Core.Juice.ring(self, target.x, target.y, 0xffffff, 26, 46, 250);
           Core.Audio.drop();
@@ -2712,58 +3076,66 @@ class BallSortScene extends BaseGameScene {
     const r = this.add.rectangle(g.x, g.y, g.w + 20, g.h + 20, 0xe8c874, 0.35).setStrokeStyle(3, 0xe8c874, 1).setDepth(50);
     this.tweens.add({ targets: r, alpha: 0, duration: 600, onComplete: function () { r.destroy(); } });
   }
-
   doShuffle() {
     if (this.animating || this.levelJustFinished) return;
-    const locked = [], free = [];
-    for (let i = 0; i < this.tubes.length; i++) {
-      if (Logic.isUniform(this.tubes[i])) locked.push(i); else free.push(i);
-    }
-    if (free.length === 0) { this.showToast('Все колбы уже собраны'); return; }
-    const balls = [];
-    free.forEach(i => { this.tubes[i].forEach(c => balls.push(c)); });
-    if (balls.length === 0 || balls.length % 4 !== 0) { this.showToast('Нечего перемешивать'); return; }
-    const k = balls.length / 4;
-
-    let next = null;
-    for (let attempt = 0; attempt < 14; attempt++) {
-      Core.Utils.shuffleWith(balls, Math.random);
-      const sub = [];
-      for (let c = 0; c < k; c++) sub.push(balls.slice(c * 4, (c + 1) * 4));
-      sub.push([]); sub.push([]);
-      if (Logic.isSolved(sub)) continue;
-      const info = Core.Solver.shortest(sub, 12000);
-      if (info.status === 'SOLVED') { next = sub; break; }
-    }
-    if (!next) {
-      const byColor = {};
-      balls.forEach(c => { (byColor[c] = byColor[c] || []).push(c); });
-      const cols = Object.keys(byColor).map(Number);
-      const sub = cols.map(c => [c, c, c, c]);
-      sub.push([]); sub.push([]);
-      for (let c = 0; c < cols.length; c++) {
-        const a = c, b = (c + 1) % cols.length;
-        const t = sub[a][3]; sub[a][3] = sub[b][3]; sub[b][3] = t;
-      }
-      next = sub;
+    
+    if (this.selected === -1) {
+        this.showToast('Выберите колбу для микса!');
+        return;
     }
 
+    const targetTube = this.selected;
+    if (this.tubes[targetTube].length === 0 || Logic.isUniform(this.tubes[targetTube])) {
+        this.showToast('Эту колбу нельзя миксовать');
+        return;
+    }
+
+    if (this.shufflesLeft > 0) {
+      this.shufflesLeft--;
+      Core.SDK.save({ shufflesOwned: this.shufflesLeft });
+      this.updateShuffleLabel();
+      this.performShuffle(targetTube);
+      return;
+    }
+    const coins = Core.SDK.get('coins', 0);
+    if (coins >= 50) {
+      Core.SDK.save({ coins: coins - 50, shufflesOwned: this.shufflesLeft + 1 });
+      this.shufflesLeft++; this.updateShuffleLabel(); this.updateCoins();
+      Core.Audio.buy(); this.showToast('Куплено!');
+      this.doShuffle();
+    } else {
+      this.showToast('Не хватает монет (нужно 50)');
+    }
+  }
+  updateShuffleLabel() { if (this.shuffleBtn) this.shuffleBtn.labelT.setText('Микс (' + this.shufflesLeft + ')'); }
+  
+  performShuffle(targetIndex) {
+    this.animating = true;
     this.clearSelectionGlow();
-    if (this.tubeGfx) this.tubeGfx.forEach(g => g && g.destroy());
-    if (this.ballGfx) this.ballGfx.forEach(arr => arr.forEach(b => b && b.destroy()));
-    if (this.zones) this.zones.forEach(z => z && z.destroy());
+    this.drawTube(targetIndex, false);
+    this.liftTop(targetIndex, false);
     this.selected = -1;
-    this.undoStack = [];
-    this.combo = 0; this.updateComboIndicator();
-    for (let j = 0; j < free.length; j++) this.tubes[free[j]] = (next[j] || []).slice();
-    this.shuffleCount = (this.shuffleCount || 0) + 1;
-    this.layoutTubes();
-    this.renderTubes();
-    this.checkDoneTubes();
-    this.refreshUndoButton();
+
+    const balls = this.tubes[targetIndex].slice();
+    Core.Utils.shuffleWith(balls);
+    this.tubes[targetIndex] = balls;
+
+    this.ballGfx[targetIndex].forEach(b => b.destroy());
+    this.ballGfx[targetIndex] = [];
+    for (let j = 0; j < this.tubes[targetIndex].length; j++) {
+      const b = this.makeBall(targetIndex, j);
+      b.setAlpha(0);
+      this.tweens.add({ targets: b, alpha: 1, duration: 300 });
+      this.ballGfx[targetIndex].push(b);
+    }
+    
+    Core.Juice.screenFlash(this, 0xf0b060, 0.2, 300);
     Core.Audio.select();
-    Core.Juice.vibrate([20, 20]);
-    this.showToast('Перемешано');
+    this.time.delayedCall(350, () => {
+      this.animating = false;
+      this.checkDoneTubes();
+      this.refreshUndoButton();
+    });
   }
 }
 
