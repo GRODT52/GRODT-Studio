@@ -89,6 +89,13 @@ a.card{display:block;text-decoration:none;color:inherit}
   color: #D4AF37;
 }
 
+.contact-icon img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
 .contact-name {
   font-weight: 700;
   color: #D4AF37;
@@ -97,25 +104,6 @@ a.card{display:block;text-decoration:none;color:inherit}
 .contact-desc {
   font-size: 13px;
   color: var(--muted);
-}
-
-.personal-channel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-top: 24px;
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.personal-channel a {
-  color: #D4AF37;
-  text-decoration: none;
-}
-
-.personal-channel a:hover {
-  color: #fff;
 }
     /* ——— карточки в разработке ——— */
 .card.soon{cursor:default;border-style:dashed}
@@ -285,33 +273,32 @@ window.trackGoal = function(name, params){
   </p>
 
   <div class="contacts-grid rv">
-    <a class="contact-card" href="https://grodt52.github.io/GRODT-Studio/#games"
-       target="_blank" rel="noopener noreferrer">
-      <span class="contact-icon">🌐</span>
-      <span class="contact-name">Сайт GRODT Studio</span>
-      <span class="contact-desc">Игры и проекты студии</span>
-    </a>
-
     <a class="contact-card" href="https://vk.ru/grodt_studio"
        target="_blank" rel="noopener noreferrer">
-      <span class="contact-icon">ⓥ</span>
+      <span class="contact-icon">
+        <img src="https://cdn.simpleicons.org/vk/0077FF" alt="VK" width="26" height="26">
+      </span>
       <span class="contact-name">ВКонтакте</span>
       <span class="contact-desc">Сообщество студии</span>
     </a>
 
     <a class="contact-card" href="https://t.me/grodt_studio"
        target="_blank" rel="noopener noreferrer">
-      <span class="contact-icon">✈</span>
+      <span class="contact-icon">
+        <img src="https://cdn.simpleicons.org/telegram/26A5E4" alt="Telegram" width="26" height="26">
+      </span>
       <span class="contact-name">Telegram</span>
       <span class="contact-desc">Новости и обновления</span>
     </a>
-  </div>
 
-  <div class="personal-channel rv">
-    <span>Личный канал основателя</span>
-    <a href="https://dzen.ru/maksim_grodt"
+    <a class="contact-card" href="https://dzen.ru/maksim_grodt"
        target="_blank" rel="noopener noreferrer">
-      Дзен — Максим Гродт ↗
+      <span class="contact-icon">
+        <!-- В SimpleIcons пока нет отдельного слуга для Dzen, используем Yandex как ближайший аналог -->
+        <img src="https://cdn.simpleicons.org/yandex/000000" alt="Дзен" width="26" height="26">
+      </span>
+      <span class="contact-name" data-i18n="dzenName">Дзен</span>
+      <span class="contact-desc" data-i18n="dzenDesc">Личный канал основателя</span>
     </a>
   </div>
 </section>
@@ -348,7 +335,9 @@ var I18N = {
     log1Body: 'Анонсированы проекты в разработке (Game of Life и String Art Studio). Локализация на 4 языка, раздел ченджлога и аналитика Яндекс Метрики.',
     log2Body: 'Релиз Neon Runner — хардкорного неонового платформера с 9 уровнями.',
     log3Body: 'Запуск сайта GRODT Studio и первых трёх браузерных игр: Lumen Garden, Ball Sort и Firefly Garden.',
-    contactsTitle: 'Контакты', contactsText: 'Контакты появятся здесь скоро.'
+    contactsTitle: 'Контакты',
+    dzenName: 'Дзен',
+    dzenDesc: 'Личный канал основателя'
   },
   en: {
     pageTitle: 'GRODT Studio — browser games',
@@ -374,7 +363,9 @@ var I18N = {
     log1Body: 'Announced upcoming projects (Game of Life and String Art Studio). Added 4 localizations, a changelog section and Yandex Metrica analytics.',
     log2Body: 'Released Neon Runner — a hardcore neon platformer with 9 levels.',
     log3Body: 'Launched the GRODT Studio website and the first three browser games: Lumen Garden, Ball Sort and Firefly Garden.',
-    contactsTitle: 'Contacts', contactsText: 'Contacts will appear here soon.'
+    contactsTitle: 'Contacts',
+    dzenName: 'Dzen',
+    dzenDesc: 'Founder\'s personal channel'
   },
   es: {
     pageTitle: 'GRODT Studio — juegos para navegador',
@@ -400,7 +391,9 @@ var I18N = {
     log1Body: 'Anunciados proyectos en desarrollo (Game of Life y String Art Studio). Añadidas 4 traducciones, sección de cambios y analítica de Yandex Metrica.',
     log2Body: 'Lanzamiento de Neon Runner — un plataformas de neón hardcore con 9 niveles.',
     log3Body: 'Lanzamiento del sitio de GRODT Studio y los primeros tres juegos de navegador: Lumen Garden, Ball Sort y Firefly Garden.',
-    contactsTitle: 'Contacto', contactsText: 'Los datos de contacto aparecerán aquí pronto.'
+    contactsTitle: 'Contacto',
+    dzenName: 'Dzen',
+    dzenDesc: 'Canal personal del fundador'
   },
   he: {
     pageTitle: 'GRODT Studio — משחקי דפדפן',
@@ -426,7 +419,9 @@ var I18N = {
     log1Body: 'הוכרזו פרויקטים בפיתוח (Game of Life ו-String Art Studio). נוספו 4 שפות, יומן שינויים וניתוח Yandex Metrica.',
     log2Body: 'יצא לאור Neon Runner — פלטפורמר ניאון אתגרי עם 9 שלבים.',
     log3Body: 'השקת אתר GRODT Studio ושלושת משחקי הדפדפן הראשונים: Lumen Garden, Ball Sort ו-Firefly Garden.',
-    contactsTitle: 'צור קשר', contactsText: 'פרטי הקשר יופיעו כאן בקרוב.'
+    contactsTitle: 'צור קשר',
+    dzenName: 'Dzen',
+    dzenDesc: 'הערוץ האישי של המייסד'
   },
   zh: {
     pageTitle: 'GRODT Studio — 浏览器游戏',
@@ -452,7 +447,9 @@ var I18N = {
     log1Body: '公布开发中项目（Game of Life 与 String Art Studio）。新增 4 种语言、更新日志板块及 Yandex Metrica 分析。',
     log2Body: '发布 Neon Runner —— 包含 9 个关卡的硬核霓虹平台跳跃游戏。',
     log3Body: 'GRODT Studio 网站及首批三款浏览器游戏上线：Lumen Garden、Ball Sort 和 Firefly Garden。',
-    contactsTitle: '联系方式', contactsText: '联系方式即将在此公布。'
+    contactsTitle: '联系方式',
+    dzenName: 'Dzen',
+    dzenDesc: '创始人的个人频道'
   }
 };
 
